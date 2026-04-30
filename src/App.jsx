@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { seedIfEmpty } from './lib/db'
 import Sidebar from './components/Sidebar'
+import { requestNotificationPermission } from './lib/notifications'
 import MobileNav from './components/MobileNav'
 import Home from './pages/Home'
 import CalendarTab from './pages/CalendarTab'
@@ -17,7 +18,19 @@ function AppInner() {
   }, [tab])
 
   useEffect(() => {
-    if (user) seedIfEmpty(user.id)
+    if (user) {
+      seedIfEmpty(user.id)
+      // Register service worker and request notification permission
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/jvplanner/sw.js').then(reg => {
+          console.log('SW registered:', reg.scope)
+        }).catch(console.error)
+      }
+      // Ask for notification permission after a short delay
+      setTimeout(() => {
+        requestNotificationPermission(user.id)
+      }, 3000)
+    }
   }, [user])
 
   if (user === undefined) {
