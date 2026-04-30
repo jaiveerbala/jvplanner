@@ -13,7 +13,9 @@
     "date-fns": "^3.3.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "workbox-precaching": "^7.4.0",
+    "workbox-routing": "^7.4.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",

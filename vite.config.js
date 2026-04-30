@@ -7,13 +7,10 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
       strategies: 'injectManifest',
-      srcDir: 'public',
-      filename: 'sw.js',
-      injectManifest: {
-        injectionPoint: undefined
-      },
+      srcDir: 'src',
+      filename: 'service-worker.js',
+      registerType: 'autoUpdate',
       manifest: {
         name: 'JV Planner',
         short_name: 'JVPlanner',
