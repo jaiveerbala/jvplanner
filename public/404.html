@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>JV Planner</title>
+  <script>
+    // Redirect all 404s back to the app
+    var path = window.location.pathname;
+    var hash = window.location.hash;
+    window.location.replace(
+      window.location.origin + '/jvplanner/' + hash
+    );
+  </script>
+</head>
+<body></body>
+</html>
