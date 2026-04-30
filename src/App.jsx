@@ -22,7 +22,7 @@ function AppInner() {
       seedIfEmpty(user.id)
       // Register service worker and request notification permission
       if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/jvplanner/sw.js').then(reg => {
+        navigator.serviceWorker.register('/jvplanner/sw.js', { scope: '/jvplanner/' }).then(reg => {
           console.log('SW registered:', reg.scope)
         }).catch(console.error)
       }
