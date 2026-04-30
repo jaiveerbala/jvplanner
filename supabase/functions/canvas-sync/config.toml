@@ -1,0 +1,2 @@
+[functions.canvas-sync]
+verify_jwt = false
