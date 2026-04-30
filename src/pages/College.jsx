@@ -168,7 +168,7 @@ export default function College() {
               {milestones.length} milestones
             </span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {/* Grade filter */}
             <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
               {['all','9','10','11','12'].map(g => (
