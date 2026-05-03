@@ -22,14 +22,11 @@ export default function CalendarTab({ tab }) {
   const [canvasStatus, setCanvasStatus] = useState('')
   const [importing, setImporting] = useState(false)
 
-  // Auto-sync Canvas on School tab open (silent)
+  // Auto-sync Canvas every time School tab opens
   useEffect(() => {
     if (tab !== 'school') return
     const savedUrl = localStorage.getItem('canvas_ics')
     if (!savedUrl) return
-    const lastSync = localStorage.getItem('canvas_last_sync')
-    const now = Date.now()
-    if (lastSync && now - parseInt(lastSync) < 60 * 60 * 1000) return
     ;(async () => {
       try {
         const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -40,16 +37,49 @@ export default function CalendarTab({ tab }) {
         })
         const json = await res.json()
         if (json.error || !json.events) return
+
         const todayStr = format(new Date(), 'yyyy-MM-dd')
-        for (const ev of json.events) {
-          const exists = rawEvents.find(e => e.title === ev.title && e.start_date === ev.start_date && e.source === 'canvas')
-          if (exists) continue
-          const isPast = ev.start_date && ev.start_date < todayStr
-          await addEvent({ ...ev, completed: isPast, completed_at: isPast ? new Date().toISOString() : null })
+
+        // Get IDs of Canvas events the user has already completed in the app
+        // We never touch these — user's completion is final
+        const completedCanvasTitles = new Set(
+          rawEvents
+            .filter(e => e.source === 'canvas' && e.completed)
+            .map(e => e.title)
+        )
+
+        // Delete all INCOMPLETE Canvas events so we can re-import fresh
+        // This handles due date changes, removed assignments, etc.
+        const incompleteCanvasIds = rawEvents
+          .filter(e => e.source === 'canvas' && !e.completed)
+          .map(e => e._baseId || e.id)
+          .filter((id, i, arr) => arr.indexOf(id) === i) // dedupe
+
+        for (const id of incompleteCanvasIds) {
+          try {
+            const { supabase } = await import('../lib/supabase')
+            await supabase.from('events').delete().eq('id', id)
+          } catch {}
         }
+
+        // Re-import all Canvas events
+        const { createEvent: addEv } = await import('../lib/db')
+        const { supabase } = await import('../lib/supabase')
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+
+        for (const ev of json.events) {
+          // Skip if user already completed this assignment
+          if (completedCanvasTitles.has(ev.title)) continue
+          // Skip past assignments
+          if (ev.start_date && ev.start_date < todayStr) continue
+          await addEv(user.id, { ...ev, completed: false })
+        }
+
         await reload()
-        localStorage.setItem('canvas_last_sync', now.toString())
-      } catch (e) { /* silent fail */ }
+      } catch (e) {
+        console.error('Canvas sync error:', e)
+      }
     })()
   }, [tab])
 
@@ -75,7 +105,7 @@ export default function CalendarTab({ tab }) {
   const handleCanvasImport = async () => {
     if (!canvasUrl.trim()) return
     setImporting(true)
-    setCanvasStatus('Fetching Canvas feed...')
+    setCanvasStatus('Syncing Canvas...')
     try {
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
       const res = await fetch(`${SUPABASE_URL}/functions/v1/canvas-sync`, {
@@ -86,17 +116,40 @@ export default function CalendarTab({ tab }) {
       const json = await res.json()
       if (json.error) throw new Error(json.error)
       localStorage.setItem('canvas_ics', canvasUrl)
-      const todayStr2 = format(new Date(), 'yyyy-MM-dd')
+      // Save URL to Supabase so server-side sync can use it
+      const { data: { user: u } } = await supabase.auth.getUser()
+      if (u) {
+        await supabase.from('user_settings').upsert({ user_id: u.id, canvas_ics_url: canvasUrl, updated_at: new Date().toISOString() })
+      }
+
+      const todayStr = format(new Date(), 'yyyy-MM-dd')
+      const completedCanvasTitles = new Set(
+        rawEvents.filter(e => e.source === 'canvas' && e.completed).map(e => e.title)
+      )
+
+      // Delete all incomplete Canvas events
+      const { supabase } = await import('../lib/supabase')
+      const incompleteIds = rawEvents
+        .filter(e => e.source === 'canvas' && !e.completed)
+        .map(e => e._baseId || e.id)
+        .filter((id, i, arr) => arr.indexOf(id) === i)
+      for (const id of incompleteIds) {
+        await supabase.from('events').delete().eq('id', id)
+      }
+
+      // Re-import fresh
+      const { createEvent: addEv } = await import('../lib/db')
+      const { data: { user } } = await supabase.auth.getUser()
       let added = 0
       for (const ev of json.events) {
-        const exists = rawEvents.find(e => e.title === ev.title && e.start_date === ev.start_date && e.source === 'canvas')
-        if (exists) continue
-        const isPast = ev.start_date && ev.start_date < todayStr2
-        await addEvent({ ...ev, completed: isPast, completed_at: isPast ? new Date().toISOString() : null })
+        if (completedCanvasTitles.has(ev.title)) continue
+        if (ev.start_date && ev.start_date < todayStr) continue
+        await addEv(user.id, { ...ev, completed: false })
         added++
       }
+
       await reload()
-      setCanvasStatus(`✓ Imported ${added} new tasks from Canvas`)
+      setCanvasStatus(`✓ Synced — ${added} upcoming assignments`)
     } catch (err) {
       setCanvasStatus(`Error — ${err.message}`)
     }

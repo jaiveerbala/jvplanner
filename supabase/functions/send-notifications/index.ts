@@ -1,15 +1,17 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { sendNotification, setVapidDetails } from 'https://esm.sh/web-push@3.6.7'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// VAPID keys
 const VAPID_PUBLIC = 'BP7mdLKwdCvLxXATEfMYAWGi3HNloRWi5jeqcMtSVQ1NPpQaguhTJH7IcBpEhJzbDdPq9un0LZ070OOhBIdkrWg'
 const VAPID_PRIVATE = '3rNS66PDMGUKtwKo0os3AYyVgIxbbi7XUI3WcfdNQBw'
-const VAPID_SUBJECT = 'mailto:jaiveerbala@gmail.com'
+const TIMEZONE = 'America/Los_Angeles'
+
+setVapidDetails('mailto:jaiveerbala@gmail.com', VAPID_PUBLIC, VAPID_PRIVATE)
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -21,61 +23,68 @@ serve(async (req) => {
     )
 
     const now = new Date()
-    const currentDate = now.toISOString().slice(0, 10)
-    const currentHour = now.getUTCHours().toString().padStart(2, '0')
-    const currentMin = now.getUTCMinutes().toString().padStart(2, '0')
-    const currentTime = `${currentHour}:${currentMin}`
+    const localStr = now.toLocaleString('en-CA', {
+      timeZone: TIMEZONE,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    })
 
-    // Find tasks due right now (within this minute)
-    const { data: dueTasks } = await supabase
-      .from('events')
-      .select('*, push_subscriptions!inner(subscription)')
-      .eq('start_date', currentDate)
-      .eq('start_time', currentTime + ':00')
-      .eq('completed', false)
+    const [datePart, timePart] = localStr.split(', ')
+    const currentDate = datePart.trim()
+    const currentTime = timePart.trim().slice(0, 5) + ':00'
+    const currentMinute = parseInt(timePart.trim().slice(3, 5))
 
-    if (!dueTasks || dueTasks.length === 0) {
-      return new Response(JSON.stringify({ sent: 0 }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+    console.log(`Running at ${currentDate} ${currentTime} (${TIMEZONE})`)
 
-    // Get all push subscriptions
+    // ── PUSH NOTIFICATIONS (every minute) ──────────────────
     const { data: subscriptions } = await supabase
       .from('push_subscriptions')
       .select('*')
 
-    if (!subscriptions || subscriptions.length === 0) {
-      return new Response(JSON.stringify({ sent: 0, reason: 'no subscriptions' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
     let sent = 0
-    for (const task of dueTasks) {
+    if (subscriptions && subscriptions.length > 0) {
       for (const sub of subscriptions) {
-        if (sub.user_id !== task.user_id) continue
-        try {
-          await sendPushNotification(sub.subscription, {
-            title: task.title,
-            body: `Due now · ${task.tab}`,
-            icon: '/jvplanner/apple-touch-icon.png',
-          })
-          sent++
-        } catch (e) {
-          console.error('Push failed:', e)
-          // Remove invalid subscription
-          if (e.message?.includes('410') || e.message?.includes('404')) {
-            await supabase.from('push_subscriptions').delete().eq('id', sub.id)
+        const { data: dueTasks } = await supabase
+          .from('events')
+          .select('*')
+          .eq('user_id', sub.user_id)
+          .eq('start_date', currentDate)
+          .eq('start_time', currentTime)
+          .eq('completed', false)
+
+        if (!dueTasks || dueTasks.length === 0) continue
+
+        for (const task of dueTasks) {
+          try {
+            const subscription = JSON.parse(sub.subscription)
+            await sendNotification(
+              subscription,
+              JSON.stringify({ title: task.title, body: `Due now · ${task.tab}` }),
+              { TTL: 86400 }
+            )
+            sent++
+            console.log(`Sent notification: ${task.title}`)
+          } catch (e) {
+            console.error('Push error:', e.message)
+            if (e.statusCode === 410 || e.statusCode === 404) {
+              await supabase.from('push_subscriptions').delete().eq('id', sub.id)
+            }
           }
         }
       }
     }
 
-    return new Response(JSON.stringify({ sent }), {
+    // ── CANVAS SYNC (every hour, on the hour) ──────────────
+    if (currentMinute === 0) {
+      console.log('Running hourly Canvas sync...')
+      await syncCanvas(supabase, currentDate)
+    }
+
+    return new Response(JSON.stringify({ sent, date: currentDate, time: currentTime }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   } catch (err) {
+    console.error('Fatal:', err.message)
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -83,89 +92,124 @@ serve(async (req) => {
   }
 })
 
-async function sendPushNotification(subscription: any, payload: any) {
-  const sub = typeof subscription === 'string' ? JSON.parse(subscription) : subscription
-  
-  const header = {
-    typ: 'JWT',
-    alg: 'ES256'
+async function syncCanvas(supabase: any, todayStr: string) {
+  // Get all users with a saved Canvas URL
+  const { data: settings } = await supabase
+    .from('user_settings')
+    .select('*')
+    .not('canvas_ics_url', 'is', null)
+
+  if (!settings || settings.length === 0) {
+    console.log('No Canvas URLs configured')
+    return
   }
 
-  const now = Math.floor(Date.now() / 1000)
-  const claims = {
-    aud: new URL(sub.endpoint).origin,
-    exp: now + 12 * 60 * 60,
-    sub: VAPID_SUBJECT,
-  }
+  for (const setting of settings) {
+    try {
+      const userId = setting.user_id
+      const icsUrl = setting.canvas_ics_url
 
-  // Import the private key
-  const privateKeyBytes = base64urlDecode(VAPID_PRIVATE)
-  const privateKey = await crypto.subtle.importKey(
-    'raw',
-    privateKeyBytes,
-    { name: 'ECDH', namedCurve: 'P-256' },
-    false,
-    ['deriveBits']
-  )
+      // Fetch Canvas feed
+      const res = await fetch(icsUrl)
+      if (!res.ok) throw new Error(`Canvas fetch failed: ${res.status}`)
+      const icsText = await res.text()
+      const events = parseICS(icsText)
 
-  // For simplicity use the web-push compatible approach
-  const jwt = await createVAPIDJWT(header, claims, VAPID_PRIVATE)
-  
-  const payloadStr = JSON.stringify(payload)
-  const payloadBytes = new TextEncoder().encode(payloadStr)
+      // Get completed Canvas titles — never touch these
+      const { data: completedEvents } = await supabase
+        .from('events')
+        .select('title')
+        .eq('user_id', userId)
+        .eq('source', 'canvas')
+        .eq('completed', true)
 
-  const response = await fetch(sub.endpoint, {
-    method: 'POST',
-    headers: {
-      'Authorization': `vapid t=${jwt},k=${VAPID_PUBLIC}`,
-      'Content-Type': 'application/json',
-      'TTL': '86400',
-    },
-    body: payloadBytes,
-  })
+      const completedTitles = new Set((completedEvents || []).map((e: any) => e.title))
 
-  if (!response.ok) {
-    throw new Error(`Push failed: ${response.status}`)
+      // Delete all incomplete Canvas events for this user
+      await supabase
+        .from('events')
+        .delete()
+        .eq('user_id', userId)
+        .eq('source', 'canvas')
+        .eq('completed', false)
+
+      // Re-import future/today events only
+      let added = 0
+      for (const ev of events) {
+        if (completedTitles.has(ev.title)) continue
+        if (ev.start_date && ev.start_date < todayStr) continue
+        await supabase.from('events').insert({ ...ev, user_id: userId })
+        added++
+      }
+
+      console.log(`Canvas sync for user ${userId}: ${added} events imported`)
+    } catch (e) {
+      console.error(`Canvas sync error for user ${setting.user_id}:`, e.message)
+    }
   }
 }
 
-async function createVAPIDJWT(header: any, claims: any, privateKeyB64: string): Promise<string> {
-  const encodedHeader = base64urlEncode(JSON.stringify(header))
-  const encodedClaims = base64urlEncode(JSON.stringify(claims))
-  const signingInput = `${encodedHeader}.${encodedClaims}`
-  
-  const keyBytes = base64urlDecode(privateKeyB64)
-  const key = await crypto.subtle.importKey(
-    'raw',
-    keyBytes,
-    { name: 'ECDSA', namedCurve: 'P-256' },
-    false,
-    ['sign']
-  )
-  
-  const signature = await crypto.subtle.sign(
-    { name: 'ECDSA', hash: 'SHA-256' },
-    key,
-    new TextEncoder().encode(signingInput)
-  )
-  
-  return `${signingInput}.${base64urlEncode(signature)}`
-}
+function parseICS(icsText: string) {
+  const events = []
+  const blocks = icsText.split('BEGIN:VEVENT')
 
-function base64urlEncode(data: string | ArrayBuffer): string {
-  let bytes: Uint8Array
-  if (typeof data === 'string') {
-    bytes = new TextEncoder().encode(data)
-  } else {
-    bytes = new Uint8Array(data)
+  for (let i = 1; i < blocks.length; i++) {
+    const b = blocks[i]
+    const summary = extractField(b, 'SUMMARY')
+    const dtstart = extractField(b, 'DTSTART')
+    const description = extractField(b, 'DESCRIPTION')
+    if (!summary || !dtstart) continue
+
+    const { date, time } = convertDateTime(dtstart)
+    events.push({
+      title: cleanText(summary),
+      start_date: date,
+      start_time: time,
+      notes: cleanText(description || ''),
+      tab: 'school',
+      source: 'canvas',
+      recurrence: 'none',
+      completed: false,
+      is_meeting: false,
+      duration_minutes: 0,
+    })
   }
-  const base64 = btoa(String.fromCharCode(...bytes))
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+  return events
 }
 
-function base64urlDecode(str: string): Uint8Array {
-  const base64 = str.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=')
-  const binary = atob(padded)
-  return new Uint8Array([...binary].map(c => c.charCodeAt(0)))
+function extractField(block: string, field: string): string | null {
+  const lines = block.split('\n')
+  const idx = lines.findIndex(l => l.match(new RegExp(`^${field}[;:]`, 'i')))
+  if (idx < 0) return null
+  let full = lines[idx].replace(/^[^:]+:/, '')
+  let next = idx + 1
+  while (next < lines.length && (lines[next].startsWith(' ') || lines[next].startsWith('\t'))) {
+    full += lines[next].trim()
+    next++
+  }
+  return full.replace(/\r/g, '').trim()
+}
+
+function convertDateTime(dtstart: string): { date: string, time: string | null } {
+  const digits = dtstart.replace(/[^0-9]/g, '')
+  if (!dtstart.includes('T')) {
+    return { date: `${digits.slice(0,4)}-${digits.slice(4,6)}-${digits.slice(6,8)}`, time: null }
+  }
+  try {
+    const utcStr = `${digits.slice(0,4)}-${digits.slice(4,6)}-${digits.slice(6,8)}T${digits.slice(8,10)}:${digits.slice(10,12)}:00Z`
+    const d = new Date(utcStr)
+    const local = d.toLocaleString('en-CA', {
+      timeZone: 'America/Los_Angeles',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hour12: false
+    })
+    const [dp, tp] = local.split(', ')
+    return { date: dp.trim(), time: tp ? tp.trim().slice(0,5) : null }
+  } catch {
+    return { date: `${digits.slice(0,4)}-${digits.slice(4,6)}-${digits.slice(6,8)}`, time: null }
+  }
+}
+
+function cleanText(text: string): string {
+  return text.replace(/\\n/g, ' ').replace(/\\,/g, ',').replace(/\\/g, '').trim()
 }
