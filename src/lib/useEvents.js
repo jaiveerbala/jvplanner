@@ -67,15 +67,24 @@ export function useEvents(tab) {
     return { events: completed, rawEvents, loading, restoreEvent, removeEvent, reload: load }
   }
 
-  // ACTIVE TABS — exclude completed AND past events from calendars/lists
-  const todayStr = new Date().toISOString().slice(0, 10)
+  // ACTIVE TABS — exclude completed from calendars/lists
   const activeRaw = rawEvents.filter(e => !e.completed)
 
   const filtered = tab === 'everything'
     ? activeRaw
     : activeRaw.filter(e => e.tab === tab)
 
-  const events = expandRecurring(filtered)
+  // Also get completed recurring instances so we can hide them
+  const completedInstanceDates = new Set(
+    rawEvents
+      .filter(e => e.completed && e._recurringInstanceDate)
+      .map(e => `${e._baseRecurringId}_${e._recurringInstanceDate}`)
+  )
+
+  const events = expandRecurring(filtered).filter(ev => {
+    if (!ev._isRecurringInstance) return true
+    return !completedInstanceDates.has(`${ev._baseId}_${ev.start_date}`)
+  })
 
   const addEvent = async (data) => {
     const created = await createEvent(user.id, data)
@@ -84,15 +93,48 @@ export function useEvents(tab) {
   }
 
   const toggleEvent = async (ev) => {
-    const id = ev._baseId || ev.id
-    const base = rawEvents.find(e => e.id === id)
+    if (ev._isRecurringInstance) {
+      // For recurring instances: create a completed one-time record for just this day
+      // Don't touch the base event at all
+      const alreadyDone = rawEvents.find(e =>
+        e._baseRecurringId === ev._baseId &&
+        e._recurringInstanceDate === ev.start_date &&
+        e.completed
+      )
+
+      if (alreadyDone) {
+        // Undo — delete the completion record
+        await deleteEvent(alreadyDone.id)
+        setRawEvents(prev => prev.filter(e => e.id !== alreadyDone.id))
+      } else {
+        // Mark this specific instance as done by creating a completed copy
+        const base = rawEvents.find(e => e.id === ev._baseId)
+        if (!base) return
+        const created = await createEvent(user.id, {
+          ...base,
+          id: undefined,
+          start_date: ev.start_date,
+          recurrence: 'none',
+          recurrence_end: null,
+          completed: true,
+          completed_at: new Date().toISOString(),
+          _baseRecurringId: ev._baseId,
+          _recurringInstanceDate: ev.start_date,
+        })
+        setRawEvents(prev => [...prev, created])
+      }
+      return
+    }
+
+    // Non-recurring: toggle normally
+    const base = rawEvents.find(e => e.id === ev.id)
     if (!base) return
     const nowCompleted = !base.completed
-    const updated = await updateEvent(id, {
+    const updated = await updateEvent(ev.id, {
       completed: nowCompleted,
       completed_at: nowCompleted ? new Date().toISOString() : null,
     })
-    setRawEvents(prev => prev.map(e => e.id === id ? updated : e))
+    setRawEvents(prev => prev.map(e => e.id === ev.id ? updated : e))
   }
 
   const removeEvent = async (ev) => {
