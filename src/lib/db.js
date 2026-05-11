@@ -23,6 +23,14 @@ export async function createEvent(userId, ev) {
 }
 
 export async function updateEvent(id, updates) {
+  // Safety: never mark a recurring event as completed — would kill all instances
+  if (updates.completed === true) {
+    const { data: existing } = await supabase.from('events').select('recurrence').eq('id', id).single()
+    if (existing && existing.recurrence && existing.recurrence !== 'none') {
+      console.warn('Blocked: attempt to complete recurring base event', id)
+      return existing
+    }
+  }
   const { data, error } = await supabase
     .from('events')
     .update(updates)
