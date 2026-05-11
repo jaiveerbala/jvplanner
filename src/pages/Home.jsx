@@ -10,9 +10,10 @@ const TODAY = format(new Date(), 'yyyy-MM-dd')
 const NOW = new Date()
 
 function isLate(ev) {
-  // Only today's tasks can be late — past days are auto-completed on import
+  // Recurring events are never late — they show up every day/week anyway
+  if (ev._recurring || (ev.recurrence && ev.recurrence !== 'none')) return false
+  // Only today's tasks with a passed time are late
   if (!ev.start_date || ev.start_date !== TODAY) return false
-  // If it has a time and that time has passed today, it's late
   if (ev.start_time) {
     const [h, m] = ev.start_time.split(':').map(Number)
     const taskTime = new Date()
