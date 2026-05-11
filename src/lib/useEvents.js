@@ -110,6 +110,15 @@ export function useEvents(tab) {
   }
 
   const toggleEvent = async (ev) => {
+    console.log('toggleEvent called:', {
+      id: ev.id,
+      title: ev.title,
+      _isRecurringInstance: ev._isRecurringInstance,
+      _baseId: ev._baseId,
+      _instanceKey: ev._instanceKey,
+      recurrence: ev.recurrence,
+      completed: ev.completed
+    })
     if (ev._isRecurringInstance) {
       // Recurring instance: store completion in separate table, never touch base event
       const key = ev._instanceKey
