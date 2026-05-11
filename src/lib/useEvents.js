@@ -1,160 +1,160 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../lib/AuthContext'
-import { getEvents, createEvent, updateEvent, deleteEvent } from '../lib/db'
 import { supabase } from './supabase'
 import { addDays, addWeeks, addMonths, format, parseISO, isAfter, startOfDay } from 'date-fns'
 
-function expandRecurring(events, completedKeys) {
-  const expanded = []
+// Fetch all events for a user
+async function fetchEvents(userId) {
+  const { data } = await supabase.from('events').select('*').eq('user_id', userId).order('start_date')
+  return data ?? []
+}
+
+// Fetch completed recurring instance keys
+async function fetchCompletedKeys(userId) {
+  const { data } = await supabase.from('recurring_completions').select('completion_key').eq('user_id', userId)
+  return new Set((data ?? []).map(r => r.completion_key))
+}
+
+// Expand recurring events into daily/weekly/monthly instances
+function buildEventList(baseEvents, completedKeys) {
+  const result = []
   const today = startOfDay(new Date())
   const cutoff = addMonths(today, 6)
 
-  for (const ev of events) {
+  for (const ev of baseEvents) {
+    // Skip completed non-recurring events
+    if (ev.completed && (!ev.recurrence || ev.recurrence === 'none')) continue
+
     if (!ev.recurrence || ev.recurrence === 'none') {
-      // Non-recurring: just push as-is
-      expanded.push(ev)
+      result.push({ ...ev, _recurring: false })
       continue
     }
 
-    // Recurring: expand into instances, never push the base event itself
+    // Recurring: generate instances
+    const endDate = ev.recurrence_end ? parseISO(ev.recurrence_end) : cutoff
     let cur = parseISO(ev.start_date)
-    const end = ev.recurrence_end ? parseISO(ev.recurrence_end) : cutoff
-    let i = 0
+    let idx = 0
 
-    while (!isAfter(cur, end) && !isAfter(cur, cutoff) && i < 400) {
-      const dateStr = format(cur, 'yyyy-MM-dd')
-      const key = `${ev.id}::${dateStr}`
-      const isDone = completedKeys.has(key)
+    while (idx < 500) {
+      if (isAfter(cur, endDate) || isAfter(cur, cutoff)) break
 
-      // Only include if not done
-      if (!isDone) {
-        expanded.push({
+      const ds = format(cur, 'yyyy-MM-dd')
+      const instanceKey = `${ev.id}::${ds}`
+
+      // Only add if not completed
+      if (!completedKeys.has(instanceKey)) {
+        result.push({
           ...ev,
-          id: `${ev.id}_r${i}`,
-          start_date: dateStr,
+          id: `${ev.id}__${idx}`,
+          start_date: ds,
           completed: false,
-          _isRecurringInstance: true,
+          _recurring: true,
           _baseId: ev.id,
-          _instanceKey: key,
+          _instanceKey: instanceKey,
         })
       }
 
-      i++
-      if (ev.recurrence === 'daily')       cur = addDays(cur, 1)
-      else if (ev.recurrence === 'weekly')  cur = addWeeks(cur, 1)
+      idx++
+      if (ev.recurrence === 'daily') cur = addDays(cur, 1)
+      else if (ev.recurrence === 'weekly') cur = addWeeks(cur, 1)
       else if (ev.recurrence === 'monthly') cur = addMonths(cur, 1)
       else break
     }
   }
-  return expanded
+
+  return result
 }
 
 export function useEvents(tab) {
   const { user } = useAuth()
-  const [rawEvents, setRawEvents] = useState([])
+  const [baseEvents, setBaseEvents] = useState([])
   const [completedKeys, setCompletedKeys] = useState(new Set())
   const [loading, setLoading] = useState(true)
 
-  const load = useCallback(async () => {
+  const reload = useCallback(async () => {
     if (!user) return
     setLoading(true)
-    const [evData, compData] = await Promise.all([
-      getEvents(user.id),
-      supabase.from('recurring_completions').select('completion_key').eq('user_id', user.id)
+    const [evs, keys] = await Promise.all([
+      fetchEvents(user.id),
+      fetchCompletedKeys(user.id)
     ])
-    setRawEvents(evData)
-    setCompletedKeys(new Set((compData.data || []).map(r => r.completion_key)))
+    setBaseEvents(evs)
+    setCompletedKeys(keys)
     setLoading(false)
   }, [user])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { reload() }, [reload])
 
-  // COMPLETED TAB
+  // Completed tab: only non-recurring completed events
   if (tab === 'completed') {
-    const completed = [...rawEvents]
+    const completed = baseEvents
       .filter(e => e.completed && (!e.recurrence || e.recurrence === 'none'))
       .sort((a, b) => new Date(b.completed_at || b.created_at) - new Date(a.completed_at || a.created_at))
 
-    const restoreEvent = async (ev) => {
-      const updated = await updateEvent(ev.id, { completed: false, completed_at: null })
-      setRawEvents(prev => prev.map(e => e.id === ev.id ? updated : e))
+    return {
+      events: completed,
+      rawEvents: baseEvents,
+      loading,
+      reload,
+      restoreEvent: async (ev) => {
+        await supabase.from('events').update({ completed: false, completed_at: null }).eq('id', ev.id)
+        await reload()
+      },
+      removeEvent: async (ev) => {
+        await supabase.from('events').delete().eq('id', ev.id)
+        await reload()
+      }
     }
-
-    const removeEvent = async (ev) => {
-      await deleteEvent(ev.id)
-      setRawEvents(prev => prev.filter(e => e.id !== ev.id))
-    }
-
-    return { events: completed, rawEvents, loading, restoreEvent, removeEvent, reload: load }
   }
 
-  // ACTIVE TABS
-  // Key fix: recurring base events are NEVER filtered by completed status
-  // Only non-recurring events get filtered out when completed
-  const activeRaw = rawEvents.filter(e => {
-    const isRecurring = e.recurrence && e.recurrence !== 'none'
-    if (isRecurring) return true // always keep recurring base events
-    return !e.completed // only filter non-recurring completed events
-  })
+  // Filter base events by tab
+  const tabFiltered = tab === 'everything'
+    ? baseEvents
+    : baseEvents.filter(e => e.tab === tab)
 
-  const filtered = tab === 'everything'
-    ? activeRaw
-    : activeRaw.filter(e => e.tab === tab)
-
-  const events = expandRecurring(filtered, completedKeys)
+  // Build full event list with recurring instances expanded
+  const events = buildEventList(tabFiltered, completedKeys)
 
   const addEvent = async (data) => {
-    const created = await createEvent(user.id, data)
-    setRawEvents(prev => [...prev, created])
+    const { data: created } = await supabase
+      .from('events')
+      .insert({ ...data, user_id: user.id })
+      .select().single()
+    if (created) setBaseEvents(prev => [...prev, created])
     return created
   }
 
   const toggleEvent = async (ev) => {
-    console.log('toggleEvent called:', {
-      id: ev.id,
-      title: ev.title,
-      _isRecurringInstance: ev._isRecurringInstance,
-      _baseId: ev._baseId,
-      _instanceKey: ev._instanceKey,
-      recurrence: ev.recurrence,
-      completed: ev.completed
-    })
-    if (ev._isRecurringInstance) {
-      // Recurring instance: store completion in separate table, never touch base event
+    if (ev._recurring) {
+      // RECURRING INSTANCE: only mark THIS day done, base event untouched
       const key = ev._instanceKey
-      const isDone = completedKeys.has(key)
-
-      if (isDone) {
-        await supabase.from('recurring_completions').delete()
-          .eq('user_id', user.id).eq('completion_key', key)
+      if (completedKeys.has(key)) {
+        // Undo
+        await supabase.from('recurring_completions')
+          .delete().eq('user_id', user.id).eq('completion_key', key)
         setCompletedKeys(prev => { const n = new Set(prev); n.delete(key); return n })
       } else {
-        await supabase.from('recurring_completions').insert({
-          user_id: user.id,
-          completion_key: key,
-          completed_at: new Date().toISOString()
-        })
+        // Mark done
+        await supabase.from('recurring_completions')
+          .insert({ user_id: user.id, completion_key: key, completed_at: new Date().toISOString() })
         setCompletedKeys(prev => new Set([...prev, key]))
       }
-      return
+    } else {
+      // NON-RECURRING: normal toggle
+      const now = !ev.completed
+      await supabase.from('events').update({
+        completed: now,
+        completed_at: now ? new Date().toISOString() : null
+      }).eq('id', ev.id)
+      setBaseEvents(prev => prev.map(e => e.id === ev.id ? { ...e, completed: now } : e))
     }
-
-    // Non-recurring: normal DB toggle
-    const base = rawEvents.find(e => e.id === ev.id)
-    if (!base) return
-    const nowCompleted = !base.completed
-    const updated = await updateEvent(ev.id, {
-      completed: nowCompleted,
-      completed_at: nowCompleted ? new Date().toISOString() : null,
-    })
-    setRawEvents(prev => prev.map(e => e.id === ev.id ? updated : e))
   }
 
   const removeEvent = async (ev) => {
     const id = ev._baseId || ev.id
-    await deleteEvent(id)
-    setRawEvents(prev => prev.filter(e => e.id !== id))
+    await supabase.from('events').delete().eq('id', id)
+    setBaseEvents(prev => prev.filter(e => e.id !== id))
   }
 
-  return { events, rawEvents, loading, addEvent, toggleEvent, removeEvent, reload: load }
+  return { events, rawEvents: baseEvents, loading, addEvent, toggleEvent, removeEvent, reload }
 }
