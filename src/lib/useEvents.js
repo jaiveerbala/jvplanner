@@ -4,7 +4,6 @@ import { getEvents, createEvent, updateEvent, deleteEvent } from '../lib/db'
 import { supabase } from './supabase'
 import { addDays, addWeeks, addMonths, format, parseISO, isAfter, startOfDay } from 'date-fns'
 
-// Expand a recurring base event into individual day instances
 function expandRecurring(events, completedKeys) {
   const expanded = []
   const today = startOfDay(new Date())
@@ -12,10 +11,12 @@ function expandRecurring(events, completedKeys) {
 
   for (const ev of events) {
     if (!ev.recurrence || ev.recurrence === 'none') {
+      // Non-recurring: just push as-is
       expanded.push(ev)
       continue
     }
 
+    // Recurring: expand into instances, never push the base event itself
     let cur = parseISO(ev.start_date)
     const end = ev.recurrence_end ? parseISO(ev.recurrence_end) : cutoff
     let i = 0
@@ -25,21 +26,23 @@ function expandRecurring(events, completedKeys) {
       const key = `${ev.id}::${dateStr}`
       const isDone = completedKeys.has(key)
 
-      expanded.push({
-        ...ev,
-        id: `${ev.id}_r${i}`,
-        start_date: dateStr,
-        completed: isDone,
-        completed_at: isDone ? 'instance' : null,
-        _isRecurringInstance: true,
-        _baseId: ev.id,
-        _instanceKey: key,
-      })
+      // Only include if not done
+      if (!isDone) {
+        expanded.push({
+          ...ev,
+          id: `${ev.id}_r${i}`,
+          start_date: dateStr,
+          completed: false,
+          _isRecurringInstance: true,
+          _baseId: ev.id,
+          _instanceKey: key,
+        })
+      }
 
       i++
-      if (ev.recurrence === 'daily')        cur = addDays(cur, 1)
-      else if (ev.recurrence === 'weekly')   cur = addWeeks(cur, 1)
-      else if (ev.recurrence === 'monthly')  cur = addMonths(cur, 1)
+      if (ev.recurrence === 'daily')       cur = addDays(cur, 1)
+      else if (ev.recurrence === 'weekly')  cur = addWeeks(cur, 1)
+      else if (ev.recurrence === 'monthly') cur = addMonths(cur, 1)
       else break
     }
   }
@@ -49,7 +52,7 @@ function expandRecurring(events, completedKeys) {
 export function useEvents(tab) {
   const { user } = useAuth()
   const [rawEvents, setRawEvents] = useState([])
-  const [completedKeys, setCompletedKeys] = useState(new Set()) // "baseId::date"
+  const [completedKeys, setCompletedKeys] = useState(new Set())
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -66,9 +69,9 @@ export function useEvents(tab) {
 
   useEffect(() => { load() }, [load])
 
-  // COMPLETED TAB - show non-recurring completed events + recurring instances marked done
+  // COMPLETED TAB
   if (tab === 'completed') {
-    const nonRecurringCompleted = rawEvents
+    const completed = [...rawEvents]
       .filter(e => e.completed && (!e.recurrence || e.recurrence === 'none'))
       .sort((a, b) => new Date(b.completed_at || b.created_at) - new Date(a.completed_at || a.created_at))
 
@@ -82,24 +85,23 @@ export function useEvents(tab) {
       setRawEvents(prev => prev.filter(e => e.id !== ev.id))
     }
 
-    return { events: nonRecurringCompleted, rawEvents, loading, restoreEvent, removeEvent, reload: load }
+    return { events: completed, rawEvents, loading, restoreEvent, removeEvent, reload: load }
   }
 
   // ACTIVE TABS
-  // Only filter out completed for NON-recurring events
+  // Key fix: recurring base events are NEVER filtered by completed status
+  // Only non-recurring events get filtered out when completed
   const activeRaw = rawEvents.filter(e => {
-    if (!e.recurrence || e.recurrence === 'none') return !e.completed
-    return true // always include recurring base events
+    const isRecurring = e.recurrence && e.recurrence !== 'none'
+    if (isRecurring) return true // always keep recurring base events
+    return !e.completed // only filter non-recurring completed events
   })
 
   const filtered = tab === 'everything'
     ? activeRaw
     : activeRaw.filter(e => e.tab === tab)
 
-  // Expand recurring events into instances, marking done ones
   const events = expandRecurring(filtered, completedKeys)
-    // Hide completed instances from calendar/list
-    .filter(ev => !ev.completed)
 
   const addEvent = async (data) => {
     const created = await createEvent(user.id, data)
@@ -109,16 +111,15 @@ export function useEvents(tab) {
 
   const toggleEvent = async (ev) => {
     if (ev._isRecurringInstance) {
+      // Recurring instance: store completion in separate table, never touch base event
       const key = ev._instanceKey
       const isDone = completedKeys.has(key)
 
       if (isDone) {
-        // Undo: remove from recurring_completions
         await supabase.from('recurring_completions').delete()
           .eq('user_id', user.id).eq('completion_key', key)
         setCompletedKeys(prev => { const n = new Set(prev); n.delete(key); return n })
       } else {
-        // Mark done: insert into recurring_completions
         await supabase.from('recurring_completions').insert({
           user_id: user.id,
           completion_key: key,
@@ -129,7 +130,7 @@ export function useEvents(tab) {
       return
     }
 
-    // Non-recurring: normal toggle
+    // Non-recurring: normal DB toggle
     const base = rawEvents.find(e => e.id === ev.id)
     if (!base) return
     const nowCompleted = !base.completed
