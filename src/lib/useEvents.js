@@ -1,43 +1,40 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../lib/AuthContext'
 import { getEvents, createEvent, updateEvent, deleteEvent } from '../lib/db'
-import { addDays, addWeeks, addMonths, format, parseISO, isAfter, isBefore } from 'date-fns'
+import { addDays, addWeeks, addMonths, format, parseISO, isAfter, isBefore, startOfDay } from 'date-fns'
 
 function expandRecurring(events) {
   const expanded = []
-  const today = new Date()
+  const today = startOfDay(new Date())
   const cutoff = addMonths(today, 6)
 
   for (const ev of events) {
-    // For recurring events, don't push the base event itself
-    // (its start_date is in the past). Only push instances.
-    if (ev.recurrence !== 'none' && ev.start_date) {
-      let cur = parseISO(ev.start_date)
-      const end = ev.recurrence_end ? parseISO(ev.recurrence_end) : cutoff
-      let i = 0
-
-      // Include the base date if it's today or future
-      if (!isBefore(cur, today) || format(cur, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd')) {
-        expanded.push({ ...ev, _isRecurringInstance: false })
-      }
-
-      for (let j = 1; j <= 365; j++) {
-        if (ev.recurrence === 'daily')   cur = addDays(cur, 1)
-        if (ev.recurrence === 'weekly')  cur = addWeeks(cur, 1)
-        if (ev.recurrence === 'monthly') cur = addMonths(cur, 1)
-        if (isAfter(cur, end) || isAfter(cur, cutoff)) break
-
-        const dateStr = format(cur, 'yyyy-MM-dd')
-        expanded.push({
-          ...ev,
-          id: `${ev.id}_r${j}`,
-          start_date: dateStr,
-          _isRecurringInstance: true,
-          _baseId: ev.id,
-        })
-      }
-    } else {
+    if (ev.recurrence === 'none' || !ev.start_date) {
       expanded.push(ev)
+      continue
+    }
+
+    // For recurring events, expand ALL instances from start_date
+    // treating every occurrence as an instance (including the first)
+    let cur = parseISO(ev.start_date)
+    const end = ev.recurrence_end ? parseISO(ev.recurrence_end) : cutoff
+    let instanceNum = 0
+
+    while (!isAfter(cur, end) && !isAfter(cur, cutoff)) {
+      const dateStr = format(cur, 'yyyy-MM-dd')
+      expanded.push({
+        ...ev,
+        id: `${ev.id}_r${instanceNum}`,
+        start_date: dateStr,
+        _isRecurringInstance: true,
+        _baseId: ev.id,
+      })
+      instanceNum++
+      if (instanceNum > 365) break
+      if (ev.recurrence === 'daily')   cur = addDays(cur, 1)
+      else if (ev.recurrence === 'weekly')  cur = addWeeks(cur, 1)
+      else if (ev.recurrence === 'monthly') cur = addMonths(cur, 1)
+      else break
     }
   }
   return expanded
@@ -46,7 +43,7 @@ function expandRecurring(events) {
 export function useEvents(tab) {
   const { user } = useAuth()
   const [rawEvents, setRawEvents] = useState([])
-  const [completedInstances, setCompletedInstances] = useState(new Set()) // "baseId_date"
+  const [completedInstances, setCompletedInstances] = useState(new Set())
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -78,15 +75,13 @@ export function useEvents(tab) {
     return { events: completed, rawEvents, loading, restoreEvent, removeEvent, reload: load }
   }
 
-  // ACTIVE TABS — exclude completed from calendars/lists
+  // ACTIVE TABS
   const activeRaw = rawEvents.filter(e => !e.completed)
-
   const filtered = tab === 'everything'
     ? activeRaw
     : activeRaw.filter(e => e.tab === tab)
 
   const events = expandRecurring(filtered).filter(ev => {
-    // Hide instances that have been checked off (tracked in local state)
     if (ev._isRecurringInstance) {
       return !completedInstances.has(`${ev._baseId}_${ev.start_date}`)
     }
@@ -101,24 +96,34 @@ export function useEvents(tab) {
 
   const toggleEvent = async (ev) => {
     if (ev._isRecurringInstance) {
-      // For recurring instances: just toggle local state
-      // Don't touch the base event in the database
+      // NEVER touch the database for recurring instances
+      // Just toggle local visual state
       const key = `${ev._baseId}_${ev.start_date}`
       setCompletedInstances(prev => {
         const next = new Set(prev)
-        if (next.has(key)) {
-          next.delete(key)
-        } else {
-          next.add(key)
-        }
+        if (next.has(key)) next.delete(key)
+        else next.add(key)
         return next
       })
       return
     }
 
-    // Non-recurring event: toggle normally in DB
+    // Non-recurring only: toggle in DB
     const base = rawEvents.find(e => e.id === ev.id)
     if (!base) return
+
+    // Safety check: never complete a recurring base event
+    if (base.recurrence && base.recurrence !== 'none') {
+      const key = `${ev.id}_${ev.start_date}`
+      setCompletedInstances(prev => {
+        const next = new Set(prev)
+        if (next.has(key)) next.delete(key)
+        else next.add(key)
+        return next
+      })
+      return
+    }
+
     const nowCompleted = !base.completed
     const updated = await updateEvent(ev.id, {
       completed: nowCompleted,
