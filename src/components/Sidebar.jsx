@@ -6,6 +6,7 @@ const TAB_CONFIG = [
   { id: 'general',    label: 'General',   color: '#60a5fa' },
   { id: 'school',     label: 'School',    color: '#c084fc' },
   { id: 'college',    label: 'College',   color: '#f59e0b' },
+  { id: 'plan',       label: 'Plan',      color: '#34d399' },
   { id: 'completed',  label: 'Completed', color: '#4ade80' },
 ]
 
@@ -22,7 +23,7 @@ export default function Sidebar({ currentTab, onNavigate }) {
       {TAB_CONFIG.map(({ id, label, color }, i) => (
         <div key={id}>
           {i === 1 && <div className="nav-divider" />}
-          {i === 5 && <div className="nav-divider" />}
+          {i === 6 && <div className="nav-divider" />}
           <button
             className={`nav-item${currentTab === id ? ' active' : ''}`}
             onClick={() => onNavigate(id)}

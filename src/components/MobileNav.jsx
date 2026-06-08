@@ -4,6 +4,7 @@ const TAB_CONFIG = [
   { id: 'general',   label: 'General',color: '#60a5fa' },
   { id: 'school',    label: 'School', color: '#c084fc' },
   { id: 'college',   label: 'College',color: '#f59e0b' },
+  { id: 'plan',      label: 'Plan',   color: '#34d399' },
   { id: 'completed', label: 'Done',   color: '#4ade80' },
 ]
 

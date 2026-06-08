@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { seedIfEmpty } from './lib/db'
-import Sidebar from './components/Sidebar'
 import { requestNotificationPermission } from './lib/notifications'
+import Sidebar from './components/Sidebar'
 import MobileNav from './components/MobileNav'
 import Home from './pages/Home'
 import CalendarTab from './pages/CalendarTab'
 import College from './pages/College'
 import Completed from './pages/Completed'
+import Plan from './pages/Plan'
 
 function AppInner() {
   const { user } = useAuth()
@@ -20,15 +21,12 @@ function AppInner() {
   useEffect(() => {
     if (user) {
       seedIfEmpty(user.id)
-      // Register service worker and request notification permission
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/jvplanner/sw.js', { scope: '/jvplanner/' }).then(reg => {
-          console.log('SW registered:', reg.scope)
-        }).catch(console.error)
-      }
-      // Ask for notification permission after a short delay
       setTimeout(() => {
-        requestNotificationPermission(user.id)
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then(() => {
+            requestNotificationPermission(user.id)
+          })
+        }
       }, 3000)
     }
   }, [user])
@@ -45,18 +43,17 @@ function AppInner() {
   if (!user) return <LoginPage />
 
   const renderPage = () => {
-    if (tab === 'home')      return <Home onNavigate={setTab} />
+    if (tab === 'home')      return <Home />
     if (tab === 'college')   return <College />
     if (tab === 'completed') return <Completed />
+    if (tab === 'plan')      return <Plan />
     return <CalendarTab tab={tab} />
   }
 
   return (
     <div className="app">
       <Sidebar currentTab={tab} onNavigate={setTab} />
-      <main className="main">
-        {renderPage()}
-      </main>
+      <main className="main">{renderPage()}</main>
       <MobileNav currentTab={tab} onNavigate={setTab} />
     </div>
   )
