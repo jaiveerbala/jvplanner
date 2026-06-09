@@ -86,40 +86,35 @@ export default function Home() {
       .then(({ data }) => setPlanItems(data || []))
   }, [user])
 
-  const saveBlocks = useCallback(async (blocks, changedBlock = null, action = 'update') => {
+  const dbSaveBlock = async (block, uid) => {
+    const { error } = await supabase.from('day_planner').upsert({
+      id: String(block.id),
+      user_id: uid,
+      plan_date: TODAY,
+      event_id: block.eventId ? String(block.eventId) : null,
+      plan_item_id: block.planItemId || null,
+      title: block.title,
+      tab: block.tab || 'general',
+      start_time: block.startTime || null,
+      duration_mins: block.durationMins || 60,
+      is_free: block.isFree || false,
+      is_plan: block.isPlan || false,
+    })
+    if (error) console.error('day_planner save error:', error.message)
+  }
+
+  const dbDeleteBlock = async (id) => {
+    const { error } = await supabase.from('day_planner').delete().eq('id', String(id))
+    if (error) console.error('day_planner delete error:', error.message)
+  }
+
+  const saveBlocks = (blocks, changedBlock = null, action = 'update') => {
     setPlannerBlocks(blocks)
     if (!user) return
-    try {
-      if (action === 'add' && changedBlock) {
-        const row = {
-          id: String(changedBlock.id),
-          user_id: user.id,
-          plan_date: TODAY,
-          event_id: changedBlock.eventId ? String(changedBlock.eventId) : null,
-          plan_item_id: changedBlock.planItemId || null,
-          title: changedBlock.title,
-          tab: changedBlock.tab || 'general',
-          start_time: changedBlock.startTime || null,
-          duration_mins: changedBlock.durationMins || 60,
-          is_free: changedBlock.isFree || false,
-          is_plan: changedBlock.isPlan || false,
-        }
-        const { error } = await supabase.from('day_planner').upsert(row)
-        if (error) console.error('day_planner upsert error:', error.message, error.details, error.hint)
-      } else if (action === 'delete' && changedBlock) {
-        const { error } = await supabase.from('day_planner').delete().eq('id', String(changedBlock))
-        if (error) console.error('day_planner delete error:', error.message)
-      } else if (action === 'update' && changedBlock) {
-        const { error } = await supabase.from('day_planner').update({
-          start_time: changedBlock.startTime,
-          duration_mins: changedBlock.durationMins
-        }).eq('id', String(changedBlock.id))
-        if (error) console.error('day_planner update error:', error.message)
-      }
-    } catch (e) {
-      console.error('day_planner exception:', e)
-    }
-  }, [user])
+    if (action === 'add' && changedBlock) dbSaveBlock(changedBlock, user.id)
+    else if (action === 'delete' && changedBlock) dbDeleteBlock(changedBlock)
+    else if (action === 'update' && changedBlock) dbSaveBlock(changedBlock, user.id)
+  }
 
   const todayEvents = events.filter(e => e.start_date === TODAY)
   const todayLate = todayEvents.filter(isLate)
