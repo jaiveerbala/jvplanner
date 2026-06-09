@@ -90,7 +90,7 @@ export default function Home() {
     setPlannerBlocks(blocks)
     if (!user) return
     if (action === 'add' && changedBlock) {
-      await supabase.from('day_planner').insert({
+      const { error } = await supabase.from('day_planner').insert({
         id: changedBlock.id, user_id: user.id, plan_date: TODAY,
         event_id: changedBlock.eventId || null,
         plan_item_id: changedBlock.planItemId || null,
@@ -99,6 +99,7 @@ export default function Home() {
         duration_mins: changedBlock.durationMins,
         is_free: changedBlock.isFree, is_plan: changedBlock.isPlan
       })
+      if (error) console.error('day_planner insert error:', error)
     } else if (action === 'delete' && changedBlock) {
       await supabase.from('day_planner').delete().eq('id', changedBlock)
     } else if (action === 'update' && changedBlock) {
