@@ -64,13 +64,20 @@ export default function Home() {
     if (events.length > 0) run()
   }, [events.length])
 
-  // Load planner blocks
+  // Load planner blocks from Supabase
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(`planner_${TODAY}`)
-      if (saved) setPlannerBlocks(JSON.parse(saved))
-    } catch {}
-  }, [])
+    if (!user) return
+    supabase.from('day_planner').select('*')
+      .eq('user_id', user.id).eq('plan_date', TODAY)
+      .order('created_at')
+      .then(({ data }) => {
+        if (data) setPlannerBlocks(data.map(r => ({
+          id: r.id, eventId: r.event_id, planItemId: r.plan_item_id,
+          title: r.title, tab: r.tab, startTime: r.start_time,
+          durationMins: r.duration_mins, isFree: r.is_free, isPlan: r.is_plan
+        })))
+      })
+  }, [user])
 
   // Load plan items
   useEffect(() => {
@@ -79,10 +86,28 @@ export default function Home() {
       .then(({ data }) => setPlanItems(data || []))
   }, [user])
 
-  const saveBlocks = useCallback((blocks) => {
+  const saveBlocks = useCallback(async (blocks, changedBlock = null, action = 'update') => {
     setPlannerBlocks(blocks)
-    localStorage.setItem(`planner_${TODAY}`, JSON.stringify(blocks))
-  }, [])
+    if (!user) return
+    if (action === 'add' && changedBlock) {
+      await supabase.from('day_planner').insert({
+        id: changedBlock.id, user_id: user.id, plan_date: TODAY,
+        event_id: changedBlock.eventId || null,
+        plan_item_id: changedBlock.planItemId || null,
+        title: changedBlock.title, tab: changedBlock.tab,
+        start_time: changedBlock.startTime,
+        duration_mins: changedBlock.durationMins,
+        is_free: changedBlock.isFree, is_plan: changedBlock.isPlan
+      })
+    } else if (action === 'delete' && changedBlock) {
+      await supabase.from('day_planner').delete().eq('id', changedBlock)
+    } else if (action === 'update' && changedBlock) {
+      await supabase.from('day_planner').update({
+        start_time: changedBlock.startTime,
+        duration_mins: changedBlock.durationMins
+      }).eq('id', changedBlock.id)
+    }
+  }, [user])
 
   const todayEvents = events.filter(e => e.start_date === TODAY)
   const todayLate = todayEvents.filter(isLate)
@@ -104,19 +129,21 @@ export default function Home() {
     try {
       const data = JSON.parse(e.dataTransfer.getData('text/plain'))
       if (plannerBlocks.find(b => b.eventId === data.id)) return
-      saveBlocks([...plannerBlocks, { id: `b_${Date.now()}`, eventId: data.id, planItemId: null, title: data.title, tab: data.tab || 'general', startTime: yToTime(y), durationMins: data.durationMins || 60, isFree: false, isPlan: false }])
+      const nb = { id: `b_${Date.now()}`, eventId: data.id, planItemId: null, title: data.title, tab: data.tab || 'general', startTime: yToTime(y), durationMins: data.durationMins || 60, isFree: false, isPlan: false }
+      saveBlocks([...plannerBlocks, nb], nb, 'add')
     } catch {}
   }
 
   const addPlanItem = (item) => {
     if (plannerBlocks.find(b => b.planItemId === item.id)) return
-    saveBlocks([...plannerBlocks, { id: `p_${Date.now()}`, eventId: null, planItemId: item.id, title: item.text, tab: 'general', startTime: '09:00:00', durationMins: 60, isFree: false, isPlan: true }])
+    const nb = { id: `p_${Date.now()}`, eventId: null, planItemId: item.id, title: item.text, tab: 'general', startTime: '09:00:00', durationMins: 60, isFree: false, isPlan: true }
+    saveBlocks([...plannerBlocks, nb], nb, 'add')
     setOpenDropdown(null)
   }
 
-  const addFree = () => saveBlocks([...plannerBlocks, { id: `f_${Date.now()}`, eventId: null, planItemId: null, title: 'Free time', tab: 'general', startTime: '12:00:00', durationMins: 60, isFree: true, isPlan: false }])
+  const addFree = () => { const nb = { id: `f_${Date.now()}`, eventId: null, planItemId: null, title: 'Free time', tab: 'general', startTime: '12:00:00', durationMins: 60, isFree: true, isPlan: false }; saveBlocks([...plannerBlocks, nb], nb, 'add') }
 
-  const removeBlock = (id) => saveBlocks(plannerBlocks.filter(b => b.id !== id))
+  const removeBlock = (id) => saveBlocks(plannerBlocks.filter(b => b.id !== id), id, 'delete')
 
   const handleBlockMouseDown = (e, blockId, type) => {
     e.preventDefault(); e.stopPropagation()
@@ -127,10 +154,12 @@ export default function Home() {
     const onMove = (me) => {
       const dy = me.clientY - startY
       if (type === 'drag') {
-        saveBlocks(plannerBlocks.map(b => b.id === blockId ? { ...b, startTime: yToTime(Math.max(0, origY + dy)) } : b))
+        const updated = { ...block, startTime: yToTime(Math.max(0, origY + dy)) }
+        saveBlocks(plannerBlocks.map(b => b.id === blockId ? updated : b), updated, 'update')
       } else {
         const newDur = Math.max(15, Math.round((origDur + dy / SLOT_H * 15) / 15) * 15)
-        saveBlocks(plannerBlocks.map(b => b.id === blockId ? { ...b, durationMins: newDur } : b))
+        const updated = { ...block, durationMins: newDur }
+        saveBlocks(plannerBlocks.map(b => b.id === blockId ? updated : b), updated, 'update')
       }
     }
     const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
