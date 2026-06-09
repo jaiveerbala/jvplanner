@@ -89,24 +89,35 @@ export default function Home() {
   const saveBlocks = useCallback(async (blocks, changedBlock = null, action = 'update') => {
     setPlannerBlocks(blocks)
     if (!user) return
-    if (action === 'add' && changedBlock) {
-      const { error } = await supabase.from('day_planner').insert({
-        id: changedBlock.id, user_id: user.id, plan_date: TODAY,
-        event_id: changedBlock.eventId || null,
-        plan_item_id: changedBlock.planItemId || null,
-        title: changedBlock.title, tab: changedBlock.tab,
-        start_time: changedBlock.startTime,
-        duration_mins: changedBlock.durationMins,
-        is_free: changedBlock.isFree, is_plan: changedBlock.isPlan
-      })
-      if (error) console.error('day_planner insert error:', error)
-    } else if (action === 'delete' && changedBlock) {
-      await supabase.from('day_planner').delete().eq('id', changedBlock)
-    } else if (action === 'update' && changedBlock) {
-      await supabase.from('day_planner').update({
-        start_time: changedBlock.startTime,
-        duration_mins: changedBlock.durationMins
-      }).eq('id', changedBlock.id)
+    try {
+      if (action === 'add' && changedBlock) {
+        const row = {
+          id: String(changedBlock.id),
+          user_id: user.id,
+          plan_date: TODAY,
+          event_id: changedBlock.eventId ? String(changedBlock.eventId) : null,
+          plan_item_id: changedBlock.planItemId || null,
+          title: changedBlock.title,
+          tab: changedBlock.tab || 'general',
+          start_time: changedBlock.startTime || null,
+          duration_mins: changedBlock.durationMins || 60,
+          is_free: changedBlock.isFree || false,
+          is_plan: changedBlock.isPlan || false,
+        }
+        const { error } = await supabase.from('day_planner').upsert(row)
+        if (error) console.error('day_planner upsert error:', error.message, error.details, error.hint)
+      } else if (action === 'delete' && changedBlock) {
+        const { error } = await supabase.from('day_planner').delete().eq('id', String(changedBlock))
+        if (error) console.error('day_planner delete error:', error.message)
+      } else if (action === 'update' && changedBlock) {
+        const { error } = await supabase.from('day_planner').update({
+          start_time: changedBlock.startTime,
+          duration_mins: changedBlock.durationMins
+        }).eq('id', String(changedBlock.id))
+        if (error) console.error('day_planner update error:', error.message)
+      }
+    } catch (e) {
+      console.error('day_planner exception:', e)
     }
   }, [user])
 
