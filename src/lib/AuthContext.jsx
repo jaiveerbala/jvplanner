@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 
+const ALLOWED_EMAIL = 'jaiveerbala@gmail.com'
+
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
@@ -8,11 +10,25 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
+      const u = session?.user ?? null
+      if (u && u.email !== ALLOWED_EMAIL) {
+        supabase.auth.signOut()
+        setUser(null)
+      } else {
+        setUser(u)
+      }
     })
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user ?? null)
+      const u = session?.user ?? null
+      if (u && u.email !== ALLOWED_EMAIL) {
+        supabase.auth.signOut()
+        setUser(null)
+      } else {
+        setUser(u)
+      }
     })
+
     return () => subscription.unsubscribe()
   }, [])
 
