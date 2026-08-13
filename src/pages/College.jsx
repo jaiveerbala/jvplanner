@@ -5,6 +5,7 @@ import {
 } from 'date-fns'
 import { useEvents } from '../lib/useEvents'
 import { useAuth } from '../lib/AuthContext'
+import { supabase } from '../lib/supabase'
 import { getMilestones, createMilestone, updateMilestone, deleteMilestone } from '../lib/db'
 import TaskItem from '../components/TaskItem'
 import EventModal from '../components/EventModal'
@@ -24,11 +25,12 @@ const STATUS_LABELS = { 'not-started': 'Not started', 'in-progress': 'In progres
 
 export default function College() {
   const { user } = useAuth()
-  const { events, addEvent, toggleEvent, removeEvent } = useEvents('college')
+  const { events, addEvent, toggleEvent, removeEvent, reload } = useEvents('college')
   const [milestones, setMilestones] = useState([])
   const [currentMonth, setCurrentMonth] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [showEventModal, setShowEventModal] = useState(false)
+  const [editEvent, setEditEvent] = useState(null)
   const [showMsModal, setShowMsModal] = useState(false)
   const [spreadsheetOpen, setSpreadsheetOpen] = useState(true)
   const [collapsedTracks, setCollapsedTracks] = useState({})
@@ -52,7 +54,8 @@ export default function College() {
   const getForDate = (ds) => events.filter(e => e.start_date === ds)
   const getForDateCalendar = (ds) => ds < todayStr ? [] : events.filter(e => e.start_date === ds && !e.completed)
   const selectedEvents = getForDate(selectedDate)
-  const pending = selectedEvents.filter(e => !e.completed)
+  const sortP = (a) => [...a].sort((x, y) => (y.priority ? 1 : 0) - (x.priority ? 1 : 0))
+  const pending = sortP(selectedEvents.filter(e => !e.completed))
   const done = selectedEvents.filter(e => e.completed)
 
   // Milestones filtered
@@ -143,11 +146,11 @@ export default function College() {
           </div>
           <div className="side-panel-body">
             {selectedEvents.length === 0 && <div className="side-panel-empty">Nothing on this day.</div>}
-            {pending.map(ev => <TaskItem key={ev.id} event={ev} onToggle={toggleEvent} onDelete={removeEvent} />)}
+            {pending.map(ev => <TaskItem key={ev.id} event={ev} onToggle={toggleEvent} onDelete={removeEvent} onEdit={setEditEvent} />)}
             {done.length > 0 && (
               <>
                 <div style={{ fontSize: 10, fontFamily: 'var(--f-mono)', color: 'var(--t-4)', letterSpacing: '0.1em', margin: '8px 0 4px' }}>COMPLETED</div>
-                {done.map(ev => <TaskItem key={ev.id} event={ev} onToggle={toggleEvent} onDelete={removeEvent} />)}
+                {done.map(ev => <TaskItem key={ev.id} event={ev} onToggle={toggleEvent} onDelete={removeEvent} onEdit={setEditEvent} />)}
               </>
             )}
           </div>
@@ -252,6 +255,25 @@ export default function College() {
           forcedTab="college"
           onSave={async (d) => { await addEvent(d); setShowEventModal(false) }}
           onClose={() => setShowEventModal(false)}
+        />
+      )}
+
+      {editEvent && (
+        <EventModal
+          initialDate={editEvent.start_date}
+          initialData={editEvent}
+          isEdit
+          onSave={async (data) => {
+            await supabase.from('events').update({
+              title: data.title, notes: data.notes, start_date: data.start_date,
+              start_time: data.start_time || null, duration_minutes: data.duration_minutes || 0,
+              recurrence: data.recurrence, recurrence_end: data.recurrence_end || null,
+              is_meeting: data.is_meeting, tab: data.tab, priority: data.priority,
+            }).eq('id', editEvent._baseId || editEvent.id)
+            setEditEvent(null)
+            await reload()
+          }}
+          onClose={() => setEditEvent(null)}
         />
       )}
 

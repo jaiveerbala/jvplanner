@@ -1372,3 +1372,132 @@ input::placeholder, textarea::placeholder { color: var(--t-3); }
     padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
   }
 }
+/* ============================================================
+   ROUND 2 — paste this at the very END of src/index.css
+   (below the block you pasted last time)
+   ============================================================ */
+
+/* ---------- Bottom nav truly flush ---------- */
+html, body, #root, .app {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.mobile-nav {
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  top: auto !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 7px 0 calc(env(safe-area-inset-bottom, 0px) + 4px) !important;
+  background: var(--bg-2);
+  border-top: 1px solid var(--b-1);
+  z-index: 100;
+}
+
+/* ---------- Mobile: stack calendar above the day's task list ---------- */
+@media (max-width: 900px) {
+  .tab-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .cal-area {
+    flex: 0 0 auto;
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--b-1);
+    overflow: visible;
+  }
+
+  .cal-grid-wrap { overflow: visible; }
+
+  .cal-cell {
+    min-height: 46px;
+  }
+  .cal-cell-events { display: none; }      /* chips are unreadable at this size */
+  .cal-cell-num { font-size: 12px; }
+
+  /* dot indicator instead of text chips */
+  .cal-cell.has-events .cal-cell-num::after {
+    content: '';
+    display: block;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin: 3px auto 0;
+  }
+
+  .side-panel {
+    flex: 1 1 auto;
+    width: 100%;
+    max-width: none;
+    border-left: none;
+    display: flex;
+    flex-direction: column;
+    min-height: 45vh;
+    padding-bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .side-panel-header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
+    padding: 12px 14px 8px;
+  }
+
+  .side-panel-body {
+    overflow: visible;
+    padding: 0 14px;
+  }
+
+  .side-panel-footer {
+    padding: 10px 14px 0;
+  }
+}
+/* ============================================================
+   ROUND 3 — paste at the very END of src/index.css
+   ============================================================ */
+
+/* A transform/filter on any ancestor would make `position: fixed`
+   anchor to that ancestor instead of the screen, lifting the nav. */
+.app, .main, #root {
+  transform: none !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  perspective: none !important;
+  will-change: auto !important;
+  contain: none !important;
+}
+
+.mobile-nav {
+  position: fixed !important;
+  bottom: 0 !important;
+  top: auto !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  margin: 0 !important;
+
+  /* trim the safe-area strip so the tabs sit lower and the bar reads tighter,
+     while still clearing the home indicator */
+  padding: 6px 0 max(6px, calc(env(safe-area-inset-bottom, 0px) - 12px)) !important;
+
+  /* make the bar visually distinct from the page so the safe-area strip
+     doesn't look like empty screen */
+  background: #16211f !important;
+  border-top: 1px solid var(--b-2) !important;
+  box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.35);
+  z-index: 200;
+}
+
+.mobile-nav-item {
+  padding: 5px 0 !important;
+}
