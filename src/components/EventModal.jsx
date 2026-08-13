@@ -2,18 +2,37 @@ import { useState } from 'react'
 import Modal from './Modal'
 import { format } from 'date-fns'
 
+function CheckBox({ checked, onChange, label, color = 'var(--accent)' }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}
+      onClick={onChange}>
+      <div style={{
+        width: 16, height: 16,
+        border: `1.5px solid ${checked ? color : 'var(--b-3)'}`,
+        borderRadius: 4, background: checked ? color : 'transparent',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, transition: 'all 0.15s',
+      }}>
+        {checked && <div style={{ width: 8, height: 5, borderLeft: '2px solid #0c1714', borderBottom: '2px solid #0c1714', transform: 'rotate(-45deg) translate(1px,-1px)' }} />}
+      </div>
+      <span style={{ fontSize: 12, color: checked ? 'var(--t-1)' : 'var(--t-2)' }}>{label}</span>
+    </label>
+  )
+}
+
 export default function EventModal({ onSave, onClose, initialDate, forcedTab, initialData, isEdit }) {
   const [form, setForm] = useState({
     title: initialData?.title || '',
     notes: initialData?.notes || '',
     tab: forcedTab || initialData?.tab || 'general',
     start_date: initialData?.start_date || initialDate || format(new Date(), 'yyyy-MM-dd'),
-    start_time: initialData?.start_time?.slice(0,5) || '',
+    start_time: initialData?.start_time?.slice(0, 5) || '',
     duration_hours: initialData?.duration_minutes ? String(Math.floor(initialData.duration_minutes / 60)) : '',
     duration_mins: initialData?.duration_minutes ? String(initialData.duration_minutes % 60) : '',
     recurrence: initialData?.recurrence || 'none',
     recurrence_end: initialData?.recurrence_end || '',
     is_meeting: initialData?.is_meeting || false,
+    priority: initialData?.priority || false,
   })
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
@@ -22,14 +41,17 @@ export default function EventModal({ onSave, onClose, initialDate, forcedTab, in
     if (!form.title.trim() || !form.start_date) return
     const hours = parseInt(form.duration_hours) || 0
     const mins = parseInt(form.duration_mins) || 0
-    const duration_minutes = hours * 60 + mins
     onSave({
-      ...form,
+      title: form.title.trim(),
+      notes: form.notes,
+      tab: form.tab,
+      start_date: form.start_date,
       start_time: form.start_time ? `${form.start_time}:00` : null,
-      duration_minutes,
-      duration_hours: undefined,
-      duration_mins: undefined,
+      duration_minutes: hours * 60 + mins,
+      recurrence: form.recurrence,
       recurrence_end: form.recurrence_end || null,
+      is_meeting: form.is_meeting,
+      priority: form.priority,
       completed: initialData?.completed || false,
       source: initialData?.source || 'manual',
     })
@@ -42,19 +64,12 @@ export default function EventModal({ onSave, onClose, initialDate, forcedTab, in
         <input autoFocus value={form.title} onChange={e => set('title', e.target.value)} placeholder="What is it?" />
       </div>
 
-      {/* Meeting toggle */}
-      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
-        <div onClick={() => set('is_meeting', !form.is_meeting)} style={{
-          width: 16, height: 16,
-          border: `1.5px solid ${form.is_meeting ? 'var(--accent)' : 'var(--b-3)'}`,
-          borderRadius: 4, background: form.is_meeting ? 'var(--accent)' : 'transparent',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0, transition: 'all 0.15s',
-        }}>
-          {form.is_meeting && <div style={{ width: 8, height: 5, borderLeft: '2px solid #0c1714', borderBottom: '2px solid #0c1714', transform: 'rotate(-45deg) translate(1px,-1px)' }} />}
-        </div>
-        <span style={{ fontSize: 12, color: form.is_meeting ? 'var(--accent-text)' : 'var(--t-2)' }}>This is a meeting</span>
-      </label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <CheckBox checked={form.priority} onChange={() => set('priority', !form.priority)}
+          label="Priority — pin to top of the day" color="#f87171" />
+        <CheckBox checked={form.is_meeting} onChange={() => set('is_meeting', !form.is_meeting)}
+          label="This is a meeting" />
+      </div>
 
       {!forcedTab && (
         <div className="form-group">
