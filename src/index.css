@@ -1501,3 +1501,136 @@ html, body, #root, .app {
 .mobile-nav-item {
   padding: 5px 0 !important;
 }
+/* ============================================================
+   ROUND 4 — paste at the very END of src/index.css
+   ============================================================ */
+
+/* ---------- Bottom nav: overshoot past the bottom edge ----------
+   The bar is drawn 44px lower than "bottom", so whatever is
+   lifting it gets covered. The matching padding keeps the tab
+   labels sitting at the correct height above the home indicator. */
+.mobile-nav {
+  --nav-overshoot: 44px;
+  position: fixed !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: auto !important;
+  bottom: calc(-1 * var(--nav-overshoot)) !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 6px 0 calc(var(--nav-overshoot) + max(4px, env(safe-area-inset-bottom, 0px) - 14px)) !important;
+  background: #16211f !important;
+  border-top: 1px solid var(--b-2) !important;
+  z-index: 200;
+}
+
+/* ---------- Bring the little event chips back in calendar cells ---------- */
+@media (max-width: 900px) {
+  .cal-cell-events {
+    display: flex !important;
+    flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+  }
+  .cal-cell.has-events .cal-cell-num::after { content: none !important; }
+
+  .cal-cell {
+    min-height: 62px;
+  }
+  .cal-chip {
+    font-size: 8px !important;
+    line-height: 1.25;
+    padding: 1px 3px !important;
+    border-radius: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cal-overflow { font-size: 8px !important; }
+}
+
+/* ---------- Let long lists actually scroll / expand ---------- */
+@media (max-width: 900px) {
+  .side-panel,
+  .side-panel-body,
+  .college-top,
+  .cal-area {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: 0 0 auto !important;
+  }
+  .side-panel { padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* week dropdown on Home was capped by its animation max-height */
+.week-section.open {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.home-tasks-pane {
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ---------- College page: no more bottom spreadsheet ---------- */
+.college-layout {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.college-top {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+@media (max-width: 900px) {
+  .college-layout {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .college-top {
+    flex-direction: column;
+    overflow: visible;
+    flex: 0 0 auto;
+  }
+}
+
+/* ---------- Tracks page ---------- */
+.tracks-page {
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+}
+.tracks-page .college-bottom {
+  height: auto;
+  max-height: none;
+  border-top: none;
+  display: block;
+}
+.tracks-page .college-bottom-body {
+  max-height: none !important;
+  overflow: visible !important;
+}
+.tracks-page .college-bottom-header {
+  cursor: default;
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 5;
+}
+@media (max-width: 900px) {
+  .tracks-page .college-bottom-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .milestone-row {
+    flex-wrap: wrap;
+    gap: 4px 8px;
+  }
+  .mobile-nav-item { font-size: 9px !important; }
+}

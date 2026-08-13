@@ -9,6 +9,7 @@ import CalendarTab from './pages/CalendarTab'
 import College from './pages/College'
 import Completed from './pages/Completed'
 import Plan from './pages/Plan'
+import Tracks from './pages/Tracks'
 
 function AppInner() {
   const { user } = useAuth()
@@ -49,6 +50,7 @@ function AppInner() {
     if (tab === 'college')   return <College />
     if (tab === 'completed') return <Completed />
     if (tab === 'plan')      return <Plan />
+    if (tab === 'tracks')    return <Tracks />
     return <CalendarTab tab={tab} />
   }
 
