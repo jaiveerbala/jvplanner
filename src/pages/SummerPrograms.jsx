@@ -13,6 +13,12 @@ export const TIERS = [
   { id: 'safety', label: 'Safety', color: '#34d399' },
 ]
 
+export const STATUSES = [
+  { id: 'not_started', label: 'Not started' },
+  { id: 'in_progress', label: 'In progress' },
+  { id: 'submitted', label: 'Submitted' },
+]
+
 const EMPTY = {
   name: '', url: '', tier: 'normal', open_date: '', due_date: '',
   open_is_estimate: false, due_is_estimate: false, notes: '',
@@ -111,6 +117,41 @@ export function useSummerPrograms(userId) {
     return true
   }
 
+  // Small direct update (status toggle, applying a date found by the site check).
+  // Optimistic: the UI changes immediately and rolls back if the save fails.
+  const patchProgram = async (id, patch) => {
+    const before = programs.find(p => p.id === id)
+    if (!before) return false
+    setPrograms(prev => prev.map(p => (p.id === id ? { ...p, ...patch } : p)))
+    const { error: err } = await supabase.from('summer_programs').update(patch).eq('id', id)
+    if (err) {
+      setPrograms(prev => prev.map(p => (p.id === id ? before : p)))
+      fail('update', err)
+      return false
+    }
+    setError(null)
+    return true
+  }
+
+  // Site check: an edge function fetches every program's page and reports any
+  // application dates it can find. Nothing is changed until you tap a button.
+  const [check, setCheck] = useState({ running: false, results: null, checkedAt: null, error: null })
+  const runCheck = async () => {
+    setCheck(c => ({ ...c, running: true, error: null }))
+    try {
+      const { data, error: err } = await supabase.functions.invoke('check-summer-programs')
+      if (err) throw err
+      if (data?.error) throw new Error(data.error)
+      const results = {}
+      for (const r of data.results || []) results[r.id] = r
+      setCheck({ running: false, results, checkedAt: data.checked_at, error: null })
+    } catch (err) {
+      console.error('[data] site check failed:', err)
+      setCheck(c => ({ ...c, running: false, error: err.message || 'Site check failed' }))
+    }
+  }
+  const clearCheck = () => setCheck({ running: false, results: null, checkedAt: null, error: null })
+
   // Same confirmation pattern as the Plan tab.
   const deleteProgram = async (program) => {
     if (!window.confirm(`Delete "${program.name}"?`)) return false
@@ -121,19 +162,26 @@ export function useSummerPrograms(userId) {
     return true
   }
 
-  return { programs, loading, error, addProgram, updateProgram, deleteProgram }
+  return { programs, loading, error, addProgram, updateProgram, patchProgram, deleteProgram, check, runCheck, clearCheck }
 }
 
 // ── cell ─────────────────────────────────────────────────────────
 export function SummerProgramsCell({ sp, editingId, setEditingId }) {
-  const { programs, loading } = sp
+  const { programs, loading, check } = sp
+  const submitted = programs.filter(p => p.status === 'submitted').length
   return (
     <section className="track-cell sp-cell">
-      <header className="track-cell-head">
+      <header className="track-cell-head sp-head">
         <span className="track-cell-pip" style={{ background: '#f59e0b' }} />
         <span className="track-cell-label">Summer Programs</span>
-        <span className="track-cell-count">{programs.length}</span>
+        <span className="track-cell-count">{submitted}/{programs.length} submitted</span>
+        <button className="btn-ghost sp-check-btn" onClick={sp.runCheck}
+          disabled={check.running || programs.length === 0}
+          title="Fetch every program's page and look for application dates">
+          {check.running ? 'Checking sites…' : '↻ Check sites for dates'}
+        </button>
       </header>
+      <CheckSummary programs={programs} check={check} onClear={sp.clearCheck} />
       <div className="sp-tiers">
         {TIERS.map(tier => (
           <TierGroup key={tier.id} tier={tier} loading={loading} sp={sp}
@@ -142,6 +190,33 @@ export function SummerProgramsCell({ sp, editingId, setEditingId }) {
         ))}
       </div>
     </section>
+  )
+}
+
+const needsDates = (p) => !p.open_date || !p.due_date || p.open_is_estimate || p.due_is_estimate
+
+function CheckSummary({ programs, check, onClear }) {
+  if (check.error) {
+    return (
+      <div className="sp-check-summary err">
+        <span>Site check failed: {check.error}</span>
+        <button className="icon-btn" title="Dismiss" onClick={onClear}>✕</button>
+      </div>
+    )
+  }
+  if (!check.results) return null
+  const rs = programs.map(p => [p, check.results[p.id]]).filter(([, r]) => r)
+  const found = rs.filter(([p, r]) => r.ok && r.candidates.length > 0 && needsDates(p)).length
+  const unreadable = rs.filter(([, r]) => !r.ok).length
+  return (
+    <div className="sp-check-summary">
+      <span>
+        Checked {rs.length} site{rs.length === 1 ? '' : 's'} at {format(parseISO(check.checkedAt), 'h:mm a')} ·{' '}
+        <b>{found}</b> with possible dates for a TBA/est. entry · {unreadable} couldn't be read.
+        {' '}Nothing was changed — review each one below.
+      </span>
+      <button className="icon-btn" title="Hide results" onClick={onClear}>✕</button>
+    </div>
   )
 }
 
@@ -163,7 +238,8 @@ function TierGroup({ tier, items, loading, sp, editingId, setEditingId }) {
               onCancel={() => setEditingId(null)}
               onSubmit={async (form) => { if (await sp.updateProgram(p.id, form)) setEditingId(null) }} />
           ) : (
-            <ProgramRow key={p.id} program={p}
+            <ProgramRow key={p.id} program={p} result={sp.check.results?.[p.id]}
+              onPatch={(patch) => sp.patchProgram(p.id, patch)}
               onEdit={() => setEditingId(p.id)}
               onDelete={() => sp.deleteProgram(p)} />
           )
@@ -192,11 +268,66 @@ function DateLine({ label, date, est }) {
   )
 }
 
-function ProgramRow({ program: p, onEdit, onDelete }) {
+// Tap to cycle: Not started → In progress → Submitted → Not started.
+function StatusToggle({ status, onChange }) {
+  const i = Math.max(0, STATUSES.findIndex(s => s.id === status))
+  const cur = STATUSES[i]
+  const next = STATUSES[(i + 1) % STATUSES.length]
+  return (
+    <button type="button" className={`sp-status ${cur.id}`}
+      title={`Tap to mark "${next.label}"`} aria-label={`Status: ${cur.label}. Tap to mark ${next.label}.`}
+      onClick={() => onChange(next.id)}>
+      <span className="sp-status-dot" />{cur.label}
+    </button>
+  )
+}
+
+function SiteCheck({ program: p, result, onPatch }) {
+  const needs = needsDates(p)
+  const [open, setOpen] = useState(needs)
+  if (!result) return null
+  if (!result.ok) return <div className="sp-check"><div className="sp-check-line warn">Site check: {result.reason}</div></div>
+  const n = result.candidates.length
+  // Only worth a line when this entry is still waiting on a date.
+  if (n === 0) return needs ? <div className="sp-check"><div className="sp-check-line">Site check: no dates found on the page.</div></div> : null
+  return (
+    <div className={`sp-check${needs ? ' needs' : ''}`}>
+      <button type="button" className="sp-check-line toggle" onClick={() => setOpen(o => !o)}>
+        Site check: {n} possible date{n === 1 ? '' : 's'} {open ? '▾' : '▸'}
+      </button>
+      {open && result.candidates.map(c => {
+        const isOpen = p.open_date === c.date && !p.open_is_estimate
+        const isDue = p.due_date === c.date && !p.due_is_estimate
+        return (
+          <div className="sp-cand" key={`${c.date}-${c.kind}`}>
+            <div className="sp-cand-top">
+              <span className="sp-cand-date">{fmtDate(c.date)}</span>
+              {c.kind !== 'unknown' && <span className={`sp-cand-kind ${c.kind}`}>looks like {c.kind === 'open' ? 'opens' : 'due'}</span>}
+              {c.year_assumed && <span className="sp-est" title="The page gave no year">year assumed</span>}
+            </div>
+            <div className="sp-cand-snippet">“…{c.snippet}…”</div>
+            <div className="sp-cand-actions">
+              {isOpen ? <span className="sp-cand-set">✓ Set as opens</span> : (
+                <button className={c.kind === 'open' ? 'btn-primary' : 'btn-ghost'}
+                  onClick={() => onPatch({ open_date: c.date, open_is_estimate: false })}>Set as opens</button>
+              )}
+              {isDue ? <span className="sp-cand-set">✓ Set as due</span> : (
+                <button className={c.kind === 'due' ? 'btn-primary' : 'btn-ghost'}
+                  onClick={() => onPatch({ due_date: c.date, due_is_estimate: false })}>Set as due</button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function ProgramRow({ program: p, result, onPatch, onEdit, onDelete }) {
   const [open, setOpen] = useState(false)
   const long = (p.notes || '').length > 90
   return (
-    <div className="sp-row" id={`sp-${p.id}`}>
+    <div className={`sp-row${p.status === 'submitted' ? ' submitted' : ''}`} id={`sp-${p.id}`}>
       <div className="sp-row-top">
         {p.url ? (
           <a className="sp-name" href={p.url} target="_blank" rel="noopener noreferrer">{p.name} ↗</a>
@@ -211,6 +342,7 @@ function ProgramRow({ program: p, onEdit, onDelete }) {
       <div className="sp-dates">
         <DateLine label="OPENS" date={p.open_date} est={p.open_is_estimate} />
         <DateLine label="DUE" date={p.due_date} est={p.due_is_estimate} />
+        <StatusToggle status={p.status} onChange={(status) => onPatch({ status })} />
       </div>
       {p.notes && (
         <div className={`sp-notes${open ? ' open' : ''}${long ? ' clickable' : ''}`}
@@ -219,6 +351,7 @@ function ProgramRow({ program: p, onEdit, onDelete }) {
           {p.notes}
         </div>
       )}
+      <SiteCheck program={p} result={result} onPatch={onPatch} />
     </div>
   )
 }

@@ -117,7 +117,64 @@ a.sp-name:hover { text-decoration: underline; }
 .sp-cal-chip-date { flex-shrink: 0; width: 46px; font-family: var(--f-mono); font-size: 10px; }
 .sp-cal-list .sp-cal-chip-text { flex: 1; }
 
+/* ── status toggle ── */
+.sp-status {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 26px; padding: 3px 10px; border-radius: 99px; cursor: pointer;
+  border: 1px solid var(--b-2); background: transparent; color: var(--t-3);
+  font-family: var(--f-mono); font-size: 10px; letter-spacing: 0.04em; white-space: nowrap;
+}
+.sp-status-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: 0.6; }
+.sp-status.in_progress { color: #f59e0b; border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.1); }
+.sp-status.submitted { color: #34d399; border-color: rgba(52, 211, 153, 0.5); background: rgba(52, 211, 153, 0.12); }
+.sp-status.in_progress .sp-status-dot, .sp-status.submitted .sp-status-dot { opacity: 1; }
+.sp-status:hover { filter: brightness(1.2); }
+.sp-row.submitted { border-color: rgba(52, 211, 153, 0.3); }
+.sp-dates { align-items: center; }
+
+/* ── site check ── */
+.sp-head { flex-wrap: wrap; }
+.sp-check-btn { padding: 6px 12px; font-size: 11px; white-space: nowrap; }
+.sp-check-btn:disabled { opacity: 0.6; cursor: default; }
+.sp-check-summary {
+  display: flex; align-items: flex-start; gap: 8px; margin: 12px 12px 0; padding: 9px 12px;
+  border: 1px solid var(--b-2); border-radius: 8px; background: var(--bg);
+  font-size: 12px; line-height: 1.5; color: var(--t-2);
+}
+.sp-check-summary > span { flex: 1; min-width: 0; }
+.sp-check-summary b { color: var(--accent); }
+.sp-check-summary.err { color: #f87171; border-color: rgba(248, 113, 113, 0.35); }
+
+.sp-check { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--b-2); display: flex; flex-direction: column; gap: 6px; }
+.sp-check-line { font-family: var(--f-mono); font-size: 10px; color: var(--t-3); text-align: left; }
+.sp-check-line.warn { color: #f59e0b; }
+.sp-check-line.toggle { background: none; border: none; padding: 4px 0; cursor: pointer; }
+.sp-check.needs .sp-check-line.toggle { color: var(--accent); }
+.sp-cand { padding: 8px 10px; border: 1px solid var(--b-1); border-radius: 6px; background: var(--bg); }
+.sp-cand-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sp-cand-date { font-family: var(--f-mono); font-size: 12px; color: var(--t-1); }
+.sp-cand-kind { font-family: var(--f-mono); font-size: 9px; padding: 0 6px; border-radius: 99px; border: 1px solid; }
+.sp-cand-kind.open { color: #34d399; }
+.sp-cand-kind.due { color: #f87171; }
+.sp-cand-snippet { margin-top: 4px; font-size: 11px; line-height: 1.45; color: var(--t-3); word-break: break-word; }
+.sp-cand-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 7px; }
+.sp-cand-actions button { padding: 5px 10px; font-size: 11px; }
+.sp-cand-set { font-family: var(--f-mono); font-size: 10px; color: #34d399; padding: 5px 4px; }
+
 @media (max-width: 900px) {
+  /* Bigger touch targets on phones. */
+  .sp-status { min-height: 34px; padding: 6px 12px; font-size: 11px; }
+  .sp-row .icon-btn { min-width: 36px; min-height: 36px; font-size: 15px; }
+  .sp-check-btn { width: 100%; min-height: 38px; }
+  .sp-cand-actions button { min-height: 36px; padding: 8px 12px; }
+  .sp-cal .cal-nav-btn, .sp-cal-btn { min-height: 36px; }
+  .sp-cal .cal-nav-btn { min-width: 40px; }
+  /* Row 1: jump + today. Row 2: ‹ month ›. */
+  .sp-cal-nav .sp-cal-btn { flex: 1 1 calc(50% - 3px); }
+  .sp-cal-month { flex: 1 1 0; min-width: 0; white-space: nowrap; }
+  .sp-cal-list .sp-cal-chip { min-height: 38px; }
+  .sp-add { min-height: 40px; }
+
   .sp-tiers { grid-template-columns: 1fr; padding: 8px; }
   .sp-form-dates { grid-template-columns: 1fr; }
   .sp-cal-grid { gap: 2px; padding: 8px 6px; }
@@ -126,5 +183,4 @@ a.sp-name:hover { text-decoration: underline; }
   .sp-cal-grid .sp-cal-chip { padding: 0; height: 7px; }
   .sp-cal-grid .sp-cal-chip-text { display: none; }
   .sp-cal-nav { width: 100%; }
-  .sp-cal-month { flex: 1; min-width: 0; }
 }
