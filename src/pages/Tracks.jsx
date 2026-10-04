@@ -1,13 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
+import { useSummerPrograms, SummerProgramsCell, SummerCalendar } from './SummerPrograms'
 
-// Each cell on the page. `fields` controls what the add/edit form asks for.
-// To add a fifth cell later, add one entry here — nothing else changes.
+// Summer Programs has its own table, cell and calendar (see SummerPrograms.jsx).
+// These are the remaining simple cells, stored in `track_items`.
+// To add another later, add one entry here — nothing else changes.
 const CELLS = [
-  { id: 'summer_program', label: 'Summer Programs', color: '#f59e0b',
-    placeholder: 'Program name', fields: ['open_date', 'link'] },
   { id: 'internship', label: 'Summer Internships', color: '#60a5fa',
     placeholder: 'Internship / company', fields: ['link'] },
   { id: 'volunteering', label: 'Volunteering', color: '#34d399',
@@ -16,7 +15,7 @@ const CELLS = [
     placeholder: 'Competition name', fields: [] },
 ]
 
-const EMPTY = { title: '', open_date: '', link: '', hours: '' }
+const EMPTY = { title: '', link: '', hours: '' }
 
 const normalizeLink = (raw) => {
   const s = (raw || '').trim()
@@ -35,6 +34,19 @@ export default function Tracks() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  // Shared by the Summer Programs cell and the calendar below it.
+  const sp = useSummerPrograms(userId)
+  const [editingId, setEditingId] = useState(null)
+  const [scrollTo, setScrollTo] = useState(null)
+
+  // Calendar marker clicked: open that entry for editing, then scroll to it
+  // once the edit form has rendered.
+  const selectProgram = (id) => { setEditingId(id); setScrollTo({ id }) }
+  useEffect(() => {
+    if (!scrollTo) return
+    document.getElementById(`sp-${scrollTo.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [scrollTo])
 
   const load = useCallback(async () => {
     if (!userId) return
@@ -58,7 +70,6 @@ export default function Tracks() {
       user_id: userId,
       category,
       title: form.title.trim(),
-      open_date: form.open_date || null,
       link: normalizeLink(form.link),
       hours: Number(form.hours) || 0,
     }).select().single()
@@ -82,6 +93,8 @@ export default function Tracks() {
     setItems(prev => prev.filter(i => i.id !== item.id))
   }
 
+  const anyError = sp.error || error
+
   return (
     <div className="tracks-page tracks-v2">
       <div className="tracks-v2-head">
@@ -89,14 +102,20 @@ export default function Tracks() {
         <div className="tracks-v2-sub">Programs, internships, volunteering and competitions.</div>
       </div>
 
-      {error && <div className="tracks-v2-error">Couldn't save or load: {error}</div>}
+      {anyError && <div className="tracks-v2-error">Couldn't save or load: {anyError}</div>}
 
-      <div className="tracks-grid">
-        {CELLS.map(cell => (
-          <Cell key={cell.id} cell={cell} loading={loading}
-            items={items.filter(i => i.category === cell.id)}
-            onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />
-        ))}
+      <div className="tracks-stack">
+        <SummerProgramsCell sp={sp} editingId={editingId} setEditingId={setEditingId} />
+
+        <div className="tracks-grid">
+          {CELLS.map(cell => (
+            <Cell key={cell.id} cell={cell} loading={loading}
+              items={items.filter(i => i.category === cell.id)}
+              onAdd={addItem} onUpdate={updateItem} onDelete={deleteItem} />
+          ))}
+        </div>
+
+        <SummerCalendar programs={sp.programs} onSelect={selectProgram} />
       </div>
     </div>
   )
@@ -106,11 +125,6 @@ function Cell({ cell, items, loading, onAdd, onUpdate, onDelete }) {
   const [form, setForm] = useState(EMPTY)
   const [adding, setAdding] = useState(false)
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
-
-  // Summer programs: soonest application date first, undated last.
-  const sorted = cell.id === 'summer_program'
-    ? [...items].sort((a, b) => (a.open_date || '9999').localeCompare(b.open_date || '9999'))
-    : items
 
   const totalHours = items.reduce((a, i) => a + (Number(i.hours) || 0), 0)
 
@@ -131,8 +145,8 @@ function Cell({ cell, items, loading, onAdd, onUpdate, onDelete }) {
 
       <div className="track-cell-body">
         {loading && <div className="track-empty">Loading...</div>}
-        {!loading && sorted.length === 0 && <div className="track-empty">Nothing here yet.</div>}
-        {sorted.map(item => (
+        {!loading && items.length === 0 && <div className="track-empty">Nothing here yet.</div>}
+        {items.map(item => (
           <Row key={item.id} item={item} cell={cell} onUpdate={onUpdate} onDelete={onDelete} />
         ))}
       </div>
@@ -158,12 +172,6 @@ function ItemFields({ cell, form, set, onEnter, autoFocus }) {
     <>
       <input autoFocus={autoFocus} placeholder={cell.placeholder}
         value={form.title} onChange={e => set('title', e.target.value)} onKeyDown={onKey} />
-      {cell.fields.includes('open_date') && (
-        <label className="track-field">
-          <span>APPLICATION OPENS</span>
-          <input type="date" value={form.open_date} onChange={e => set('open_date', e.target.value)} />
-        </label>
-      )}
       {cell.fields.includes('link') && (
         <input type="url" placeholder="Link (optional)"
           value={form.link} onChange={e => set('link', e.target.value)} onKeyDown={onKey} />
@@ -188,7 +196,6 @@ function Row({ item, cell, onUpdate, onDelete }) {
   const startEdit = () => {
     setForm({
       title: item.title,
-      open_date: item.open_date || '',
       link: item.link || '',
       hours: String(item.hours ?? ''),
     })
@@ -199,7 +206,6 @@ function Row({ item, cell, onUpdate, onDelete }) {
     if (!form.title.trim()) return
     const ok = await onUpdate(item.id, {
       title: form.title.trim(),
-      open_date: form.open_date || null,
       link: normalizeLink(form.link),
       hours: Number(form.hours) || 0,
     })
@@ -226,24 +232,11 @@ function Row({ item, cell, onUpdate, onDelete }) {
     )
   }
 
-  let dateChip = null
-  if (cell.fields.includes('open_date')) {
-    if (item.open_date) {
-      const days = differenceInCalendarDays(parseISO(item.open_date), new Date())
-      const cls = days <= 0 ? ' open' : days <= 14 ? ' soon' : ''
-      const text = days <= 0 ? 'Open now' : `Opens ${format(parseISO(item.open_date), 'MMM d, yyyy')}`
-      dateChip = <span className={`track-chip${cls}`}>{text}</span>
-    } else {
-      dateChip = <span className="track-chip muted">No date yet</span>
-    }
-  }
-
   return (
     <div className="track-row">
       <div className="track-row-main">
         <div className="track-row-title">{item.title}</div>
         <div className="track-row-meta">
-          {dateChip}
           {item.link && (
             <a className="track-link" href={item.link} target="_blank" rel="noopener noreferrer">Open page ↗</a>
           )}

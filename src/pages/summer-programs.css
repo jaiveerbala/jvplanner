@@ -1,0 +1,130 @@
+/* Summer Programs cell + calendar (Tracks tab). Imported by SummerPrograms.jsx. */
+
+.tracks-v2 .tracks-stack { display: flex; flex-direction: column; gap: 16px; max-width: 1200px; }
+
+/* ── tier groups ── */
+.sp-tiers {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+}
+.sp-tier { border: 1px solid var(--b-1); border-radius: 10px; min-width: 0; background: var(--bg); }
+.sp-tier-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; border-bottom: 1px solid var(--b-1);
+}
+.sp-tier-bar { width: 3px; height: 14px; border-radius: 2px; flex-shrink: 0; }
+.sp-tier-label {
+  flex: 1; font-family: var(--f-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--t-1);
+}
+.sp-tier-count { font-family: var(--f-mono); font-size: 10px; color: var(--t-3); }
+.sp-tier-body { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+.sp-add { width: auto; margin: 2px 0 0; }
+
+/* ── entry ── */
+.sp-row {
+  padding: 10px 12px; border: 1px solid var(--b-1); border-radius: 8px;
+  background: var(--bg-2); scroll-margin-top: 80px;
+}
+.sp-row-top { display: flex; align-items: flex-start; gap: 8px; }
+.sp-name {
+  flex: 1; min-width: 0; font-size: 13px; font-weight: 600; line-height: 1.35;
+  color: var(--accent); text-decoration: none; word-break: break-word;
+}
+a.sp-name:hover { text-decoration: underline; }
+.sp-name.nolink { color: var(--t-1); }
+
+.sp-dates { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; }
+.sp-date { display: flex; align-items: center; gap: 6px; font-family: var(--f-mono); font-size: 11px; }
+.sp-date-label { font-size: 9px; letter-spacing: 0.1em; color: var(--t-3); }
+.sp-date-value { color: var(--t-1); white-space: nowrap; }
+.sp-date-value.tba { color: var(--t-4); }
+.sp-est {
+  padding: 0 5px; border: 1px dashed var(--b-3); border-radius: 99px;
+  font-family: var(--f-mono); font-size: 9px; color: var(--t-3); white-space: nowrap;
+}
+
+.sp-notes {
+  margin-top: 7px; font-size: 12px; line-height: 1.45; color: var(--t-3);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+  overflow: hidden; word-break: break-word;
+}
+.sp-notes.clickable { cursor: pointer; }
+.sp-notes.clickable:hover { color: var(--t-2); }
+.sp-notes.open { display: block; -webkit-line-clamp: unset; line-clamp: unset; }
+
+/* ── form ── */
+.sp-form { scroll-margin-top: 80px; background: var(--bg-2); border-color: var(--accent); }
+.sp-form select, .sp-form textarea { width: 100%; }
+.sp-form textarea { resize: vertical; font-family: inherit; font-size: 12px; line-height: 1.45; }
+.sp-form-dates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sp-date-input { display: flex; align-items: center; gap: 4px; }
+.sp-date-input input { flex: 1; min-width: 0; }
+.sp-est-toggle, .sp-clear {
+  flex-shrink: 0; padding: 6px 8px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--b-2); background: transparent; color: var(--t-3);
+  font-family: var(--f-mono); font-size: 10px;
+}
+.sp-est-toggle.on { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+.sp-est-toggle:disabled { opacity: 0.35; cursor: default; }
+.sp-clear:hover { color: #f87171; border-color: rgba(248, 113, 113, 0.5); }
+
+/* ── calendar ── */
+.sp-cal-head { flex-wrap: wrap; gap: 10px; }
+.sp-cal-nav { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.sp-cal-btn { padding: 5px 10px; font-size: 11px; white-space: nowrap; }
+.sp-cal-btn:disabled { opacity: 0.4; cursor: default; }
+.sp-cal-month { min-width: 128px; text-align: center; font-size: 13px; font-weight: 600; }
+
+.sp-cal-legend { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px 0; }
+
+.sp-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; padding: 10px 12px; }
+.sp-cal-dow {
+  padding: 2px 4px; font-family: var(--f-mono); font-size: 9px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--t-3);
+}
+.sp-cal-day {
+  min-height: 84px; min-width: 0; padding: 4px;
+  display: flex; flex-direction: column; gap: 3px;
+  border: 1px solid var(--b-1); border-radius: 6px; background: var(--bg);
+}
+.sp-cal-day.out { opacity: 0.35; }
+.sp-cal-day.today { border-color: var(--accent); }
+.sp-cal-num { font-family: var(--f-mono); font-size: 10px; color: var(--t-3); }
+.sp-cal-day.today .sp-cal-num { color: var(--accent); font-weight: 700; }
+
+.sp-cal-chip {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
+  padding: 2px 6px; border-radius: 4px; border: 1px solid; cursor: pointer;
+  font-family: inherit; font-size: 10px; line-height: 1.4; text-align: left;
+}
+.sp-cal-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-cal-chip.open { color: #34d399; background: rgba(52, 211, 153, 0.14); border-color: rgba(52, 211, 153, 0.55); }
+.sp-cal-chip.due { color: #f87171; background: rgba(248, 113, 113, 0.14); border-color: rgba(248, 113, 113, 0.55); }
+.sp-cal-chip.est { border-style: dashed; background: transparent; opacity: 0.75; }
+.sp-cal-chip:not(.static):hover { filter: brightness(1.25); opacity: 1; }
+.sp-cal-chip.static { width: auto; cursor: default; }
+
+.sp-cal-list { display: flex; flex-direction: column; gap: 4px; padding: 0 12px 12px; }
+.sp-cal-list-title {
+  font-family: var(--f-mono); font-size: 9px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--t-3); margin-bottom: 2px;
+}
+.sp-cal-list .sp-cal-chip { padding: 6px 8px; font-size: 12px; }
+.sp-cal-chip-date { flex-shrink: 0; width: 46px; font-family: var(--f-mono); font-size: 10px; }
+.sp-cal-list .sp-cal-chip-text { flex: 1; }
+
+@media (max-width: 900px) {
+  .sp-tiers { grid-template-columns: 1fr; padding: 8px; }
+  .sp-form-dates { grid-template-columns: 1fr; }
+  .sp-cal-grid { gap: 2px; padding: 8px 6px; }
+  .sp-cal-day { min-height: 52px; padding: 2px; }
+  /* Too narrow for text: chips become colored bars, the list below has the names. */
+  .sp-cal-grid .sp-cal-chip { padding: 0; height: 7px; }
+  .sp-cal-grid .sp-cal-chip-text { display: none; }
+  .sp-cal-nav { width: 100%; }
+  .sp-cal-month { flex: 1; min-width: 0; }
+}
