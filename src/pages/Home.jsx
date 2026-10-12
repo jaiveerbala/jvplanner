@@ -148,6 +148,11 @@ export default function Home() {
 
   const hr = new Date().getHours()
   const greeting = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening'
+  // First name from the signed-in Google account (falls back to the email name).
+  const meta = user?.user_metadata || {}
+  const fullName = meta.given_name || meta.full_name || meta.name || (user?.email || '').split('@')[0]
+  const firstName = (fullName.trim().split(/\s+/)[0] || '')
+  const displayName = firstName ? firstName[0].toUpperCase() + firstName.slice(1) : ''
   const planSections = [...new Set(planItems.map(i => i.section))]
 
   // ---- planner add / edit ----
@@ -242,7 +247,7 @@ export default function Home() {
   // ---------- panels ----------
   const tasksPanel = (
     <>
-      <div className="home-greeting">{greeting}, Jaiveer.</div>
+      <div className="home-greeting">{greeting}{displayName ? `, ${displayName}` : ''}.</div>
       <div className="home-date">{format(new Date(), 'EEEE · MMMM d, yyyy').toUpperCase()}</div>
 
       {todayLate.length > 0 && (
