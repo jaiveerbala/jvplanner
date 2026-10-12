@@ -18,6 +18,30 @@ const ALLOWED_EMAILS = [
 // onAuthStateChange will correct us the moment the real session resolves.
 const SESSION_TIMEOUT_MS = 8000
 
+// First + last initial from the Google account name ("DP" for Daniel
+// Pashkevich), falling back to the email's first letter. The owner keeps
+// the original "JV" (first + last would give "JB").
+export function userInitials(user) {
+  if (user?.email === OWNER_EMAIL) return 'JV'
+  const meta = user?.user_metadata || {}
+  const parts = (meta.full_name || meta.name || '').trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  if (parts.length === 1) return parts[0][0].toUpperCase()
+  return (user?.email || '?')[0].toUpperCase()
+}
+
+// Login screen has no account yet, so it shows the name of whoever last
+// signed in on this device (stored locally), or plain "PLANNER" the first time.
+const BRAND_KEY = 'planner_brand'
+export function lastBrand() {
+  try { return localStorage.getItem(BRAND_KEY) || 'PLANNER' } catch { return 'PLANNER' }
+}
+export function plannerBrand(user) {
+  const brand = `${userInitials(user)}PLANNER`
+  try { localStorage.setItem(BRAND_KEY, brand) } catch { /* private mode */ }
+  return brand
+}
+
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {

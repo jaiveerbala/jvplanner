@@ -1,4 +1,4 @@
-import { useAuth } from '../lib/AuthContext'
+import { useAuth, plannerBrand } from '../lib/AuthContext'
 
 const TAB_CONFIG = [
   { id: 'home',       label: 'Home',      color: '#e2e8f0' },
@@ -18,7 +18,7 @@ export default function Sidebar({ currentTab, onNavigate }) {
     <nav className="sidebar">
       <div className="sidebar-brand">
         <span className="sidebar-brand-dot" />
-        <span className="sidebar-brand-name">JVPLANNER</span>
+        <span className="sidebar-brand-name">{plannerBrand(user)}</span>
       </div>
 
       {TAB_CONFIG.map(({ id, label, color }, i) => (

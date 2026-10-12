@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AuthProvider, useAuth, OWNER_EMAIL } from './lib/AuthContext'
+import { AuthProvider, useAuth, OWNER_EMAIL, userInitials, lastBrand } from './lib/AuthContext'
 import { seedIfEmpty } from './lib/db'
 import { requestNotificationPermission } from './lib/notifications'
 import Sidebar from './components/Sidebar'
@@ -18,6 +18,11 @@ function AppInner() {
   useEffect(() => {
     document.body.className = `tab-${tab}`
   }, [tab])
+
+  // Browser tab title: "DP Planner", "JV Planner", ...
+  useEffect(() => {
+    document.title = user ? `${userInitials(user)} Planner` : 'Planner'
+  }, [user])
 
   useEffect(() => {
     if (user) {
@@ -70,7 +75,7 @@ function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-orb" />
-        <div className="login-title">JVPLANNER</div>
+        <div className="login-title">{lastBrand()}</div>
         <div className="login-sub">Sign in once — stays logged in on every device automatically.</div>
         <button className="google-signin-btn" onClick={signInWithGoogle}>
           <GoogleIcon />
