@@ -1,7 +1,17 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from './supabase'
 
-const ALLOWED_EMAIL = 'jaiveerbala@gmail.com'
+// The app owner. Only this account gets the starter content (college
+// milestones, summer program list) seeded on first login.
+export const OWNER_EMAIL = 'jaiveerbala@gmail.com'
+
+// Everyone who may sign in. Each account only ever sees its own data
+// (enforced by row-level security in Supabase, not by the app).
+// Emails must be lowercase.
+const ALLOWED_EMAILS = [
+  OWNER_EMAIL,
+  'danielmpashkevich@gmail.com',
+]
 
 // If getSession() hasn't answered in this long, stop waiting and show the
 // login screen. A login screen is recoverable; an infinite spinner is not.
@@ -21,7 +31,7 @@ export function AuthProvider({ children }) {
       if (cancelled) return
       settled = true
       const u = session?.user ?? null
-      if (u && u.email !== ALLOWED_EMAIL) {
+      if (u && !ALLOWED_EMAILS.includes((u.email || '').toLowerCase())) {
         supabase.auth.signOut()
         setUser(null)
       } else {

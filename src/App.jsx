@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AuthProvider, useAuth } from './lib/AuthContext'
+import { AuthProvider, useAuth, OWNER_EMAIL } from './lib/AuthContext'
 import { seedIfEmpty } from './lib/db'
 import { requestNotificationPermission } from './lib/notifications'
 import Sidebar from './components/Sidebar'
@@ -21,7 +21,8 @@ function AppInner() {
 
   useEffect(() => {
     if (user) {
-      seedIfEmpty(user.id)
+      // Starter milestones are personal to the owner — other accounts start empty.
+      if (user.email === OWNER_EMAIL) seedIfEmpty(user.id)
       setTimeout(() => {
         if ('serviceWorker' in navigator) {
           navigator.serviceWorker.ready.then(() => {
